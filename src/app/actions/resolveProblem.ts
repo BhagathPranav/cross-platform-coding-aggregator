@@ -23,6 +23,140 @@ function getCleanCompare(str: string): string {
 }
 
 /**
+ * Checks if two problem titles are equivalent, ignoring capitalization, punctuation,
+ * common stop words, plural forms, and distinguishing numeric suffixes/roman numerals.
+ */
+function areTitlesEquivalent(title1: string, title2: string): boolean {
+  const t1 = title1.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const t2 = title2.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+
+  const getNumbersOrNumerals = (text: string) => {
+    return text.split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => /^(?:[0-9]+|i+|iv|v|vi|vii|viii|ix|x)$/i.test(w));
+  };
+
+  const nums1 = getNumbersOrNumerals(t1);
+  const nums2 = getNumbersOrNumerals(t2);
+
+  // If they have different numbers/numerals, they are not equivalent
+  if (nums1.join(',') !== nums2.join(',')) {
+    return false;
+  }
+
+  const stopWords = new Set([
+    'solve', 'solver', 'problem', 'the', 'a', 'an', 'in', 'of', 
+    'to', 'for', 'with', 'and', 'or', 'is', 'on', 'at', 'by', 
+    'from', 'checker', 'design', 'implementation', 'program'
+  ]);
+
+  // Normalize words: stem plural 's' or 'es' to singular
+  const getKeywords = (text: string) => {
+    return text.split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 1 && !stopWords.has(w))
+      .map(w => {
+        if (w.endsWith('ies')) return w.slice(0, -3) + 'y';
+        if (w.endsWith('es')) return w.slice(0, -2);
+        if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+        return w;
+      });
+  };
+
+  const keys1 = getKeywords(t1);
+  const keys2 = getKeywords(t2);
+
+  if (keys1.length === 0 || keys2.length === 0) return false;
+
+  const set2 = new Set(keys2);
+
+  // Calculate overlap
+  const intersect = keys1.filter(k => set2.has(k) || keys2.some(k2 => k2.includes(k) || k.includes(k2)));
+  
+  const minLen = Math.min(keys1.length, keys2.length);
+  return intersect.length >= minLen || (intersect.length / Math.max(keys1.length, keys2.length)) >= 0.5;
+}
+
+/**
+ * Generates common URL slug candidates from a problem title.
+ */
+function getSlugCandidates(title: string): string[] {
+  const clean = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
+  const words = clean.split(/\s+/);
+  const standard = words.join('-');
+  
+  const candidates = new Set<string>();
+  candidates.add(standard);
+
+  // Variations for "solve" / "solver"
+  if (words.includes('solver') || words.includes('solve')) {
+    const coreWords = words.filter(w => w !== 'solver' && w !== 'solve' && w !== 'the');
+    candidates.add(`solve-${coreWords.join('-')}`);
+    candidates.add(`solve-the-${coreWords.join('-')}`);
+    candidates.add(coreWords.join('-'));
+  }
+  
+  // Variations for "reverse"
+  if (words[0] === 'reverse') {
+    const coreWords = words.slice(1).filter(w => w !== 'a' && w !== 'an' && w !== 'the');
+    candidates.add(`reverse-${coreWords.join('-')}`);
+    candidates.add(`reverse-a-${coreWords.join('-')}`);
+  }
+
+  // Variations for plurals/singulars
+  const singularWords = words.map(w => {
+    if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+    return w;
+  });
+  candidates.add(singularWords.join('-'));
+
+  return Array.from(candidates);
+}
+
+/**
+ * Checks if a candidate URL exists on a coding platform.
+ * Follows redirects to resolve correct GFG URLs.
+ */
+async function findValidUrl(
+  candidates: string[], 
+  platform: 'geeksforgeeks' | 'hackerrank' | 'codechef'
+): Promise<string | null> {
+  for (const slug of candidates) {
+    let url = '';
+    if (platform === 'geeksforgeeks') {
+      url = `https://www.geeksforgeeks.org/problems/${slug}/1`;
+    } else if (platform === 'hackerrank') {
+      url = `https://www.hackerrank.com/challenges/${slug}/problem`;
+    } else if (platform === 'codechef') {
+      url = `https://www.codechef.com/problems/${slug.toUpperCase().replace(/-/g, '')}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      });
+
+      if (platform === 'geeksforgeeks') {
+        if (response.ok || response.status === 301 || response.status === 302) {
+          const finalUrl = response.url;
+          if (finalUrl && finalUrl.includes('/problems/') && !finalUrl.endsWith('/problems/')) {
+            return finalUrl;
+          }
+        }
+      } else {
+        if (response.ok) {
+          return response.url || url;
+        }
+      }
+    } catch (e) {
+      // Ignore network errors and try next candidate
+    }
+  }
+  return null;
+}
+
+/**
  * Server Action that parses a pasted URL, extracts its problem details from platform APIs/scraping,
  * matches equivalent titles, and caches it in the PocketBase collection.
  */
@@ -148,8 +282,39 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
 
     console.log(`Resolved problem info: "${title}" (${difficulty})`);
 
-    // 3. Cross-Platform Matching via APIs
-    const cleanTitle = getCleanCompare(title);
+    // 3. Connect to database to check for existing equivalents and merge URLs
+    const pbAdmin = new PocketBase(pbUrl);
+    let resolvedProblem: CodingProblem | null = null;
+    let existingRecordId: string | null = null;
+
+    try {
+      // Authenticate as Admin
+      await pbAdmin.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+
+      // Get all problems from DB to check for equivalents
+      const allProblems = await pbAdmin.collection('problems').getFullList();
+      const existingMatch = allProblems.find(p => areTitlesEquivalent(p.title, title));
+
+      if (existingMatch) {
+        existingRecordId = existingMatch.id;
+        // Merge URLs: prefer new resolved URL if populated, otherwise use existing
+        leetcodeUrl = leetcodeUrl || existingMatch.leetcode_url || '';
+        codeforcesUrl = codeforcesUrl || existingMatch.codeforces_url || '';
+        hackerrankUrl = hackerrankUrl || existingMatch.hackerrank_url || '';
+        codechefUrl = codechefUrl || existingMatch.codechef_url || '';
+        geeksforgeeksUrl = geeksforgeeksUrl || existingMatch.geeksforgeeks_url || '';
+        
+        // Use the existing problem title and difficulty to keep it consistent
+        title = existingMatch.title;
+        difficulty = existingMatch.difficulty as any;
+        console.log(`Found equivalent problem in DB: "${title}" (ID: ${existingRecordId}). Merging URLs.`);
+      }
+    } catch (pbErr) {
+      console.warn('PocketBase admin connection failed during initial lookup, using local representation:', pbErr);
+    }
+
+    // 4. Resolve remaining missing URLs across platforms
+    const candidates = getSlugCandidates(title);
 
     // Search LeetCode API if LeetCode URL is not yet resolved
     if (!leetcodeUrl) {
@@ -161,7 +326,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
         if (lcResponse.ok) {
           const lcData = await lcResponse.json();
           const match = lcData.stat_status_pairs.find(
-            (p: any) => getCleanCompare(p.stat.question__title) === cleanTitle
+            (p: any) => areTitlesEquivalent(p.stat.question__title, title)
           );
           if (match) {
             leetcodeUrl = `https://leetcode.com/problems/${match.stat.question__title_slug}/`;
@@ -180,7 +345,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
         if (cfResponse.ok) {
           const cfData = await cfResponse.json();
           const match = cfData.result.problems.find(
-            (p: any) => getCleanCompare(p.name) === cleanTitle
+            (p: any) => areTitlesEquivalent(p.name, title)
           );
           if (match) {
             codeforcesUrl = `https://codeforces.com/problemset/problem/${match.contestId}/${match.index}`;
@@ -190,23 +355,45 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       } catch (e) {}
     }
 
-    // For other platforms, do not generate search redirection URLs. If not resolved, they remain empty.
+    // Auto-discover GeeksforGeeks if missing
+    if (!geeksforgeeksUrl) {
+      const gfgUrlFound = await findValidUrl(candidates, 'geeksforgeeks');
+      if (gfgUrlFound) {
+        geeksforgeeksUrl = gfgUrlFound;
+        console.log(`- Discovered GeeksforGeeks URL: ${geeksforgeeksUrl}`);
+      }
+    }
 
-    // 4. Save/Cache resolved problem in database
-    const pbAdmin = new PocketBase(pbUrl);
-    let resolvedProblem: CodingProblem;
+    // Auto-discover HackerRank if missing
+    if (!hackerrankUrl) {
+      const hrUrlFound = await findValidUrl(candidates, 'hackerrank');
+      if (hrUrlFound) {
+        hackerrankUrl = hrUrlFound;
+        console.log(`- Discovered HackerRank URL: ${hackerrankUrl}`);
+      }
+    }
 
+    // Auto-discover CodeChef if missing
+    if (!codechefUrl) {
+      const ccUrlFound = await findValidUrl(candidates, 'codechef');
+      if (ccUrlFound) {
+        codechefUrl = ccUrlFound;
+        console.log(`- Discovered CodeChef URL: ${codechefUrl}`);
+      }
+    }
+
+    // 5. Save/Update record in database
     try {
-      // Authenticate as Admin
-      await pbAdmin.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+      if (existingRecordId) {
+        // Update existing record
+        const r = await pbAdmin.collection('problems').update(existingRecordId, {
+          leetcode_url: leetcodeUrl || null,
+          codeforces_url: codeforcesUrl || null,
+          hackerrank_url: hackerrankUrl || null,
+          codechef_url: codechefUrl || null,
+          geeksforgeeks_url: geeksforgeeksUrl || null
+        });
 
-      // Check if problem already exists (avoid duplicates)
-      const existing = await pbAdmin.collection('problems').getList(1, 1, {
-        filter: `title = "${title}"`
-      });
-
-      if (existing.items.length > 0) {
-        const r = existing.items[0];
         resolvedProblem = {
           id: r.id,
           title: r.title,
@@ -217,7 +404,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           codechefUrl: r.codechef_url || undefined,
           geeksforgeeksUrl: r.geeksforgeeks_url || undefined,
         };
-        console.log(`Problem "${title}" already cached in DB.`);
+        console.log(`Updated problem "${title}" in DB with merged/resolved URLs.`);
       } else {
         // Create new record
         const r = await pbAdmin.collection('problems').create({
@@ -240,13 +427,12 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           codechefUrl: r.codechef_url || undefined,
           geeksforgeeksUrl: r.geeksforgeeks_url || undefined,
         };
-        console.log(`Cached problem "${title}" in live PocketBase database successfully.`);
+        console.log(`Cached new problem "${title}" in PocketBase successfully.`);
       }
     } catch (pbErr) {
-      console.warn('PocketBase admin connection failed, returning in-memory mock record:', pbErr);
-      // Fallback: Create mock cached problem
+      console.warn('PocketBase save/update failed, returning in-memory representation:', pbErr);
       resolvedProblem = {
-        id: `mock-resolved-${Date.now()}`,
+        id: existingRecordId || `mock-resolved-${Date.now()}`,
         title,
         difficulty,
         leetcodeUrl: leetcodeUrl || undefined,
