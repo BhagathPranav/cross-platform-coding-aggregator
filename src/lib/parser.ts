@@ -7,20 +7,45 @@ import { CodingProblem } from './db';
  * @param {string} url - The URL string entered by the user.
  * @returns {{ platform: string; slug: string } | null} The parsed platform name and problem slug/id, or null if invalid.
  */
+/**
+ * Normalizes a problem title to a clean slug.
+ * Trims trailing whitespaces, converts to lowercase, removes non-alphanumeric characters,
+ * and swaps spaces for single hyphens.
+ */
+export function normalizeTitleToSlug(title: string): string {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-');
+}
+
+/**
+ * Parses a coding platform URL and extracts the problem identifier/slug.
+ * Supports LeetCode, Codeforces, HackerRank, CodeChef, and GeeksforGeeks.
+ * 
+ * @param {string} url - The URL string entered by the user.
+ * @returns {{ platform: string; slug: string } | null} The parsed platform name and problem slug/id, or null if invalid.
+ */
 export function parseProblemUrl(url: string): { platform: string; slug: string } | null {
   try {
     const cleanUrl = url.trim();
     if (!cleanUrl) return null;
     
-    // Convert e.g. leetcode.com/problems/... to a standard format for URL parsing
     const standardUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
     const parsed = new URL(standardUrl);
     const host = parsed.hostname.toLowerCase();
     const path = parsed.pathname;
 
     if (host.includes('leetcode.com')) {
-      const match = path.match(/\/problems\/([a-zA-Z0-9-]+)/);
+      const match = cleanUrl.match(/leetcode\.com\/problems\/([^/]+)/);
       if (match) return { platform: 'leetcode', slug: match[1] };
+    } else if (host.includes('geeksforgeeks.org')) {
+      const match = cleanUrl.match(/geeksforgeeks\.org\/problems\/([^/]+)/);
+      if (match) return { platform: 'geeksforgeeks', slug: match[1] };
+    } else if (host.includes('hackerrank.com')) {
+      const match = cleanUrl.match(/hackerrank\.com\/challenges\/([^/]+)/);
+      if (match) return { platform: 'hackerrank', slug: match[1] };
     } else if (host.includes('codeforces.com')) {
       // Matches standard problem url format: /problemset/problem/123/A or /contest/123/problem/A
       const matchProblemset = path.match(/\/problemset\/problem\/(\d+)\/([a-zA-Z0-9]+)/i);
@@ -28,15 +53,9 @@ export function parseProblemUrl(url: string): { platform: string; slug: string }
       
       const matchContest = path.match(/\/contest\/(\d+)\/problem\/([a-zA-Z0-9]+)/i);
       if (matchContest) return { platform: 'codeforces', slug: `${matchContest[1]}${matchContest[2]}` };
-    } else if (host.includes('hackerrank.com')) {
-      const match = path.match(/\/challenges\/([a-zA-Z0-9-]+)/);
-      if (match) return { platform: 'hackerrank', slug: match[1] };
     } else if (host.includes('codechef.com')) {
       const match = path.match(/\/problems\/([a-zA-Z0-9-]+)/);
       if (match) return { platform: 'codechef', slug: match[1] };
-    } else if (host.includes('geeksforgeeks.org')) {
-      const match = path.match(/\/problems\/([a-zA-Z0-9-]+)/);
-      if (match) return { platform: 'geeksforgeeks', slug: match[1] };
     }
   } catch (e) {
     // Fail silently and return null if url is invalid
@@ -65,11 +84,11 @@ export function findProblemBySlug(problems: CodingProblem[], slug: string): Codi
 
     // 2. Check if the URL strings contain the slug
     const urls = [
-      prob.leetcodeUrl,
-      prob.codeforcesUrl,
-      prob.hackerrankUrl,
-      prob.codechefUrl,
-      prob.geeksforgeeksUrl
+      prob.leetcode_url,
+      prob.codeforces_url,
+      prob.hackerrank_url,
+      prob.codechef_url,
+      prob.gfg_url
     ];
 
     for (const url of urls) {

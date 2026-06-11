@@ -4,11 +4,11 @@ export interface CodingProblem {
   id: string;
   title: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
-  leetcodeUrl?: string;
-  codeforcesUrl?: string;
-  hackerrankUrl?: string;
-  codechefUrl?: string;
-  geeksforgeeksUrl?: string;
+  leetcode_url: string | null;
+  codeforces_url: string | null;
+  hackerrank_url: string | null;
+  codechef_url: string | null;
+  gfg_url: string | null;
 }
 
 export interface UserProfile {
@@ -23,101 +23,101 @@ export const MOCK_PROBLEMS: CodingProblem[] = [
     id: 'prob-1',
     title: 'Two Sum',
     difficulty: 'Easy',
-    leetcodeUrl: 'https://leetcode.com/problems/two-sum/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/1/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/two-sum/problem',
-    codechefUrl: 'https://www.codechef.com/problems/TWOSUM',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/two-sum-problem/'
+    leetcode_url: 'https://leetcode.com/problems/two-sum/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/1/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/two-sum/problem',
+    codechef_url: 'https://www.codechef.com/problems/TWOSUM',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/two-sum/'
   },
   {
     id: 'prob-2',
     title: 'LRU Cache',
     difficulty: 'Hard',
-    leetcodeUrl: 'https://leetcode.com/problems/lru-cache/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/5/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/lru-cache/problem',
-    codechefUrl: 'https://www.codechef.com/problems/LRUCH',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/lru-cache/'
+    leetcode_url: 'https://leetcode.com/problems/lru-cache/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/5/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/lru-cache/problem',
+    codechef_url: 'https://www.codechef.com/problems/LRUCH',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/lru-cache/'
   },
   {
     id: 'prob-3',
     title: 'Merge Sort',
     difficulty: 'Medium',
-    leetcodeUrl: 'https://leetcode.com/problems/sort-an-array/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/10/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/mergesort/problem',
-    codechefUrl: 'https://www.codechef.com/problems/MERGESORT',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/merge-sort/'
+    leetcode_url: 'https://leetcode.com/problems/sort-an-array/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/10/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/mergesort/problem',
+    codechef_url: 'https://www.codechef.com/problems/MERGESORT',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/merge-sort/'
   },
   {
     id: 'prob-4',
     title: 'Binary Search',
     difficulty: 'Easy',
-    leetcodeUrl: 'https://leetcode.com/problems/binary-search/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/12/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/binary-search/problem',
-    codechefUrl: 'https://www.codechef.com/problems/BSEARCH',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/binary-search/'
+    leetcode_url: 'https://leetcode.com/problems/binary-search/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/12/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/binary-search/problem',
+    codechef_url: 'https://www.codechef.com/problems/BSEARCH',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/binary-search/'
   },
   {
     id: 'prob-5',
     title: 'Longest Substring Without Repeating Characters',
     difficulty: 'Medium',
-    leetcodeUrl: 'https://leetcode.com/problems/longest-substring-without-repeating-characters/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/15/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/longest-substring-without-repeating-characters/problem',
-    codechefUrl: 'https://www.codechef.com/problems/LSTRN',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/longest-substring-without-repeating-characters/'
+    leetcode_url: 'https://leetcode.com/problems/longest-substring-without-repeating-characters/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/15/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/longest-substring-without-repeating-characters/problem',
+    codechef_url: 'https://www.codechef.com/problems/LSTRN',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/longest-substring-without-repeating-characters/'
   },
   {
     id: 'prob-6',
     title: 'Reverse Linked List',
     difficulty: 'Easy',
-    leetcodeUrl: 'https://leetcode.com/problems/reverse-linked-list/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/20/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/reverse-linked-list/problem',
-    codechefUrl: 'https://www.codechef.com/problems/REVLIST',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/reverse-a-linked-list/'
+    leetcode_url: 'https://leetcode.com/problems/reverse-linked-list/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/20/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/reverse-linked-list/problem',
+    codechef_url: 'https://www.codechef.com/problems/REVLIST',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/reverse-a-linked-list/'
   },
   {
     id: 'prob-7',
     title: 'Valid Parentheses',
     difficulty: 'Easy',
-    leetcodeUrl: 'https://leetcode.com/problems/valid-parentheses/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/26/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/valid-parentheses/problem',
-    codechefUrl: 'https://www.codechef.com/problems/PARENTH',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/parenthesis-checker/'
+    leetcode_url: 'https://leetcode.com/problems/valid-parentheses/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/26/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/valid-parentheses/problem',
+    codechef_url: 'https://www.codechef.com/problems/PARENTH',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/parenthesis-checker/'
   },
   {
     id: 'prob-8',
     title: 'Kth Largest Element in an Array',
     difficulty: 'Medium',
-    leetcodeUrl: 'https://leetcode.com/problems/kth-largest-element-in-an-array/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/32/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/kth-largest-element-in-an-array/problem',
-    codechefUrl: 'https://www.codechef.com/problems/KTHLAR',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/k-largest-elements/'
+    leetcode_url: 'https://leetcode.com/problems/kth-largest-element-in-an-array/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/32/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/kth-largest-element-in-an-array/problem',
+    codechef_url: 'https://www.codechef.com/problems/KTHLAR',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/k-largest-elements/'
   },
   {
     id: 'prob-9',
     title: '3Sum',
     difficulty: 'Medium',
-    leetcodeUrl: 'https://leetcode.com/problems/3sum/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/42/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/three-sum/problem',
-    codechefUrl: 'https://www.codechef.com/problems/THREESUM',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/3-sum-free/'
+    leetcode_url: 'https://leetcode.com/problems/3sum/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/42/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/three-sum/problem',
+    codechef_url: 'https://www.codechef.com/problems/THREESUM',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/3-sum-free/'
   },
   {
     id: 'prob-10',
     title: 'Min Stack',
     difficulty: 'Medium',
-    leetcodeUrl: 'https://leetcode.com/problems/min-stack/',
-    codeforcesUrl: 'https://codeforces.com/problemset/problem/50/A',
-    hackerrankUrl: 'https://www.hackerrank.com/challenges/min-stack/problem',
-    codechefUrl: 'https://www.codechef.com/problems/MINSTACK',
-    geeksforgeeksUrl: 'https://www.geeksforgeeks.org/problems/special-stack/'
+    leetcode_url: 'https://leetcode.com/problems/min-stack/',
+    codeforces_url: 'https://codeforces.com/problemset/problem/50/A',
+    hackerrank_url: 'https://www.hackerrank.com/challenges/min-stack/problem',
+    codechef_url: 'https://www.codechef.com/problems/MINSTACK',
+    gfg_url: 'https://www.geeksforgeeks.org/problems/special-stack/'
   }
 ];
 
@@ -172,11 +172,11 @@ class DatabaseService {
         id: r.id,
         title: r.title,
         difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
-        leetcodeUrl: r.leetcode_url || undefined,
-        codeforcesUrl: r.codeforces_url || undefined,
-        hackerrankUrl: r.hackerrank_url || undefined,
-        codechefUrl: r.codechef_url || undefined,
-        geeksforgeeksUrl: r.geeksforgeeks_url || undefined,
+        leetcode_url: r.leetcode_url || null,
+        codeforces_url: r.codeforces_url || null,
+        hackerrank_url: r.hackerrank_url || null,
+        codechef_url: r.codechef_url || null,
+        gfg_url: r.geeksforgeeks_url || null,
       }));
     } catch (e) {
       console.error('PocketBase fetch problems failed, falling back to mock problems:', e);

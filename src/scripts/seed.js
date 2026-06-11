@@ -13,7 +13,7 @@ const PROBLEMS_TO_SEED = [
     codeforces_url: 'https://codeforces.com/problemset/problem/1/A',
     hackerrank_url: 'https://www.hackerrank.com/challenges/two-sum/problem',
     codechef_url: 'https://www.codechef.com/problems/TWOSUM',
-    geeksforgeeks_url: 'https://www.geeksforgeeks.org/problems/two-sum-problem/'
+    geeksforgeeks_url: 'https://www.geeksforgeeks.org/problems/two-sum/'
   },
   {
     title: 'LRU Cache',

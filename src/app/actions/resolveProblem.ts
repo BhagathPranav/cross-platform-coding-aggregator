@@ -407,11 +407,11 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           id: r.id,
           title: r.title,
           difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
-          leetcodeUrl: r.leetcode_url || undefined,
-          codeforcesUrl: r.codeforces_url || undefined,
-          hackerrankUrl: r.hackerrank_url || undefined,
-          codechefUrl: r.codechef_url || undefined,
-          geeksforgeeksUrl: r.geeksforgeeks_url || undefined,
+          leetcode_url: r.leetcode_url || null,
+          codeforces_url: r.codeforces_url || null,
+          hackerrank_url: r.hackerrank_url || null,
+          codechef_url: r.codechef_url || null,
+          gfg_url: r.geeksforgeeks_url || null,
         };
         console.log(`Updated problem "${title}" in DB with merged/resolved URLs.`);
       } else {
@@ -430,11 +430,11 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           id: r.id,
           title: r.title,
           difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
-          leetcodeUrl: r.leetcode_url || undefined,
-          codeforcesUrl: r.codeforces_url || undefined,
-          hackerrankUrl: r.hackerrank_url || undefined,
-          codechefUrl: r.codechef_url || undefined,
-          geeksforgeeksUrl: r.geeksforgeeks_url || undefined,
+          leetcode_url: r.leetcode_url || null,
+          codeforces_url: r.codeforces_url || null,
+          hackerrank_url: r.hackerrank_url || null,
+          codechef_url: r.codechef_url || null,
+          gfg_url: r.geeksforgeeks_url || null,
         };
         console.log(`Cached new problem "${title}" in PocketBase successfully.`);
       }
@@ -444,11 +444,11 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
         id: existingRecordId || `mock-resolved-${Date.now()}`,
         title,
         difficulty,
-        leetcodeUrl: leetcodeUrl || undefined,
-        codeforcesUrl: codeforcesUrl || undefined,
-        hackerrankUrl: hackerrankUrl || undefined,
-        codechefUrl: codechefUrl || undefined,
-        geeksforgeeksUrl: geeksforgeeksUrl || undefined,
+        leetcode_url: leetcodeUrl || null,
+        codeforces_url: codeforcesUrl || null,
+        hackerrank_url: hackerrankUrl || null,
+        codechef_url: codechefUrl || null,
+        gfg_url: geeksforgeeksUrl || null,
       };
     }
 
