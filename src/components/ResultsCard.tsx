@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Bookmark, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bookmark, ExternalLink, Loader2 } from 'lucide-react';
 import { PlatformIcon } from './PlatformIcon';
 import { CodingProblem } from '@/lib/db';
 import { useAuth } from '@/app/providers';
@@ -14,6 +14,64 @@ export function ResultsCard({ problem }: ResultsCardProps) {
   const { bookmarks, toggleBookmark, setLoginModalOpen, user } = useAuth();
   
   const isBookmarked = bookmarks.includes(problem.id);
+
+  const [validatedUrls, setValidatedUrls] = useState<Record<string, string | null>>({
+    leetcode: problem.leetcode_url,
+    codeforces: problem.codeforces_url,
+    hackerrank: problem.hackerrank_url,
+    codechef: problem.codechef_url,
+    geeksforgeeks: problem.gfg_url,
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const cacheKey = `validated_links_${problem.title.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    
+    // Check localStorage first
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setValidatedUrls(parsed);
+        return;
+      } catch (e) {
+        localStorage.removeItem(cacheKey);
+      }
+    }
+
+    setLoading(true);
+    fetch('/api/resolve', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title: problem.title })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data.success && data.urls) {
+          const merged = {
+            leetcode: problem.leetcode_url || data.urls.leetcode || null,
+            codeforces: problem.codeforces_url || data.urls.codeforces || null,
+            hackerrank: problem.hackerrank_url || data.urls.hackerrank || null,
+            codechef: problem.codechef_url || data.urls.codechef || null,
+            geeksforgeeks: problem.gfg_url || data.urls.geeksforgeeks || null,
+          };
+          setValidatedUrls(merged);
+          localStorage.setItem(cacheKey, JSON.stringify(merged));
+        }
+      })
+      .catch((err) => console.error('[ResultsCard] Dynamic resolve failed:', err))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [problem]);
 
   const handleBookmarkClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -40,11 +98,11 @@ export function ResultsCard({ problem }: ResultsCardProps) {
     label: string;
     url: string | null | undefined;
   }[] = [
-    { name: 'leetcode', label: 'LeetCode', url: problem.leetcode_url },
-    { name: 'codeforces', label: 'Codeforces', url: problem.codeforces_url },
-    { name: 'hackerrank', label: 'HackerRank', url: problem.hackerrank_url },
-    { name: 'codechef', label: 'CodeChef', url: problem.codechef_url },
-    { name: 'geeksforgeeks', label: 'GeeksforGeeks', url: problem.gfg_url },
+    { name: 'leetcode', label: 'LeetCode', url: validatedUrls.leetcode },
+    { name: 'codeforces', label: 'Codeforces', url: validatedUrls.codeforces },
+    { name: 'hackerrank', label: 'HackerRank', url: validatedUrls.hackerrank },
+    { name: 'codechef', label: 'CodeChef', url: validatedUrls.codechef },
+    { name: 'geeksforgeeks', label: 'GeeksforGeeks', url: validatedUrls.geeksforgeeks },
   ];
 
   return (
@@ -85,9 +143,14 @@ export function ResultsCard({ problem }: ResultsCardProps) {
 
       {/* Platforms Link Grid */}
       <div className="mt-6">
-        <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">
-          Available Platforms
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Available Platforms
+          </p>
+          {loading && (
+            <Loader2 size={12} className="animate-spin text-indigo-500" />
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {platforms.map((platform) => {
             const isAvailable = isValidProblemUrl(platform.url);
