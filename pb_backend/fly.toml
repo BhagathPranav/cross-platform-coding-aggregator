@@ -1,0 +1,19 @@
+# Fly.toml configuration file for PocketBase deployment
+# Reference: https://fly.io/docs/reference/configuration/
+
+app = "your-pocketbase-app-name"
+primary_region = "bos" # Change to your preferred region (e.g., ams, hkg, lax)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "pb_data"
+  destination = "/pb/pb_data"
