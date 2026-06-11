@@ -11,6 +11,7 @@ import { useAuth } from '@/app/providers';
 import { ResultsCard } from '@/components/ResultsCard';
 import { LoginModal } from '@/components/LoginModal';
 import { parseProblemUrl, findProblemBySlug } from '@/lib/parser';
+import { resolveProblemAction } from '@/app/actions/resolveProblem';
 import Fuse from 'fuse.js';
 
 export default function Home() {
@@ -26,6 +27,11 @@ export default function Home() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [matchedUrlPlatform, setMatchedUrlPlatform] = useState<string | null>(null);
 
+  // Resolution States
+  const [resolving, setResolving] = useState(false);
+  const [resolvingError, setResolvingError] = useState('');
+  const [resolvingSuccess, setResolvingSuccess] = useState('');
+
   // Fetch problems on mount
   useEffect(() => {
     setMounted(true);
@@ -35,6 +41,32 @@ export default function Home() {
     }
     loadProblems();
   }, []);
+
+  const isSearchQueryUrl = useMemo(() => {
+    return !!parseProblemUrl(searchQuery);
+  }, [searchQuery]);
+
+  const handleResolveProblem = async () => {
+    if (!searchQuery.trim()) return;
+    setResolving(true);
+    setResolvingError('');
+    setResolvingSuccess('');
+    
+    try {
+      const res = await resolveProblemAction(searchQuery);
+      if (res.success && res.problem) {
+        setProblems(prev => [res.problem!, ...prev]);
+        setResolvingSuccess(`Successfully resolved "${res.problem.title}" and cached in database!`);
+        setSearchQuery('');
+      } else {
+        setResolvingError(res.message || 'Failed to resolve the problem from the live URL.');
+      }
+    } catch (err: any) {
+      setResolvingError(err.message || 'An unexpected error occurred during resolution.');
+    } finally {
+      setResolving(false);
+    }
+  };
 
   // Initialize Fuse.js for fuzzy searching on problem fields
   const fuse = useMemo(() => {
@@ -240,6 +272,30 @@ export default function Home() {
               <span>Detected pasted URL from <strong>{matchedUrlPlatform.toUpperCase()}</strong>! Resolving equivalents...</span>
             </div>
           )}
+
+          {resolvingSuccess && (
+            <div className="mt-3 flex items-center justify-between gap-1.5 px-4 py-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 text-sm font-semibold animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex items-center gap-2">
+                <Info size={16} className="shrink-0" />
+                <span>{resolvingSuccess}</span>
+              </div>
+              <button onClick={() => setResolvingSuccess('')} className="p-1 rounded-full hover:bg-emerald-500/10 text-emerald-500 cursor-pointer">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {resolvingError && (
+            <div className="mt-3 flex items-center justify-between gap-1.5 px-4 py-3 rounded-xl border border-rose-500/15 bg-rose-500/5 text-rose-600 dark:text-rose-400 text-sm font-semibold animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex items-center gap-2">
+                <Info size={16} className="shrink-0" />
+                <span>{resolvingError}</span>
+              </div>
+              <button onClick={() => setResolvingError('')} className="p-1 rounded-full hover:bg-rose-500/10 text-rose-500 cursor-pointer">
+                <X size={14} />
+              </button>
+            </div>
+          )}
         </section>
 
         {/* FILTER BAR SECTION */}
@@ -289,7 +345,16 @@ export default function Home() {
 
         {/* RESULTS GRID / LOADER */}
         <section className="flex-1">
-          {searchLoading ? (
+          {resolving ? (
+            // Resolving server action loading state
+            <div className="col-span-full glass-panel border border-indigo-500/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl shadow-indigo-500/5">
+              <RefreshCw className="animate-spin text-indigo-500" size={36} />
+              <h4 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">Resolving Problem Details</h4>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+                Contacting platform API endpoints, matching equivalent problem URLs, and saving to your database. This may take a few seconds...
+              </p>
+            </div>
+          ) : searchLoading ? (
             // Skeleton loader state
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
@@ -307,8 +372,36 @@ export default function Home() {
                 <ResultsCard key={problem.id} problem={problem} />
               ))}
             </div>
+          ) : isSearchQueryUrl ? (
+            // Unresolved URL resolver card
+            <div className="text-center py-16 px-6 glass-panel rounded-3xl max-w-xl mx-auto border border-indigo-500/20 shadow-xl shadow-indigo-500/5">
+              <div className="h-14 w-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 text-indigo-500">
+                <Sparkles size={26} className="animate-float" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pasted Link is not in Database</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
+                This appears to be a valid URL from <strong>{matchedUrlPlatform?.toUpperCase()}</strong>, but it hasn't been mapped in our database yet. Would you like to resolve it automatically?
+              </p>
+              <div className="mt-6 flex justify-center gap-3">
+                <button
+                  id="resolve-pasted-url-btn"
+                  onClick={handleResolveProblem}
+                  disabled={resolving}
+                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-500/10 flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <RefreshCw size={14} className={resolving ? 'animate-spin' : ''} />
+                  <span>{resolving ? 'Resolving...' : 'Resolve & Add Problem'}</span>
+                </button>
+                <button
+                  onClick={handleClearSearch}
+                  className="px-5 py-3 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold rounded-xl transition-all text-sm cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : (
-            // Empty Search State
+            // Generic Empty Search State
             <div className="text-center py-16 px-4 glass-panel rounded-3xl max-w-xl mx-auto border border-dashed border-slate-200 dark:border-slate-800">
               <div className="h-12 w-12 rounded-2xl bg-slate-100 dark:bg-slate-950 flex items-center justify-center mx-auto mb-4 text-slate-400">
                 <Search size={22} />
