@@ -3,6 +3,7 @@
 import PocketBase from 'pocketbase';
 import { CodingProblem } from '@/lib/db';
 import { parseProblemUrl } from '@/lib/parser';
+import { findPlatformLink, verifyMatch } from '@/lib/discovery';
 
 // Admin details for database caching (read on server only)
 const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
@@ -77,89 +78,7 @@ function areTitlesEquivalent(title1: string, title2: string): boolean {
   return intersect.length >= minLen || (intersect.length / Math.max(keys1.length, keys2.length)) >= 0.5;
 }
 
-/**
- * Generates common URL slug candidates from a problem title.
- */
-function getSlugCandidates(title: string): string[] {
-  const clean = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
-  const words = clean.split(/\s+/);
-  const standard = words.join('-');
-  
-  const candidates = new Set<string>();
-  candidates.add(standard);
 
-  // Variations for "solve" / "solver"
-  if (words.includes('solver') || words.includes('solve')) {
-    const coreWords = words.filter(w => w !== 'solver' && w !== 'solve' && w !== 'the');
-    candidates.add(`solve-${coreWords.join('-')}`);
-    candidates.add(`solve-the-${coreWords.join('-')}`);
-    candidates.add(coreWords.join('-'));
-  }
-  
-  // Variations for "reverse"
-  if (words[0] === 'reverse') {
-    const coreWords = words.slice(1).filter(w => w !== 'a' && w !== 'an' && w !== 'the');
-    candidates.add(`reverse-${coreWords.join('-')}`);
-    candidates.add(`reverse-a-${coreWords.join('-')}`);
-  }
-
-  // Variations for plurals/singulars
-  const singularWords = words.map(w => {
-    if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
-    return w;
-  });
-  candidates.add(singularWords.join('-'));
-
-  return Array.from(candidates);
-}
-
-/**
- * Checks if a candidate URL exists on a coding platform.
- * Follows redirects to resolve correct GFG URLs.
- */
-async function findValidUrl(
-  candidates: string[], 
-  platform: 'geeksforgeeks' | 'hackerrank' | 'codechef'
-): Promise<string | null> {
-  for (const slug of candidates) {
-    let url = '';
-    if (platform === 'geeksforgeeks') {
-      url = `https://www.geeksforgeeks.org/problems/${slug}/1`;
-    } else if (platform === 'hackerrank') {
-      url = `https://www.hackerrank.com/challenges/${slug}/problem`;
-    } else if (platform === 'codechef') {
-      url = `https://www.codechef.com/problems/${slug.toUpperCase().replace(/-/g, '')}`;
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-      });
-
-      if (platform === 'geeksforgeeks') {
-        if (response.ok || response.status === 301 || response.status === 302) {
-          const finalUrl = response.url;
-          if (finalUrl && finalUrl.includes('/problems/') && !finalUrl.endsWith('/problems/')) {
-            // Read HTML text to verify it's not a generic/error page (which GFG serves with HTTP 200)
-            const html = await response.text();
-            if (html.includes('Something went wrong') || html.includes('Oops!!') || html.includes('<title>Practice | GeeksforGeeks')) {
-              continue; // This is a server-side error page, not a valid problem!
-            }
-            return finalUrl;
-          }
-        }
-      } else {
-        if (response.ok) {
-          return response.url || url;
-        }
-      }
-    } catch (e) {
-      // Ignore network errors and try next candidate
-    }
-  }
-  return null;
-}
 
 /**
  * Server Action that parses a pasted URL, extracts its problem details from platform APIs/scraping,
@@ -322,74 +241,95 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       console.warn('PocketBase admin connection failed during initial lookup, using local representation:', pbErr);
     }
 
-    // 4. Resolve remaining missing URLs across platforms
-    const candidates = getSlugCandidates(title);
+    // 4. Resolve remaining missing URLs across platforms using Dynamic Meta-Search & Verification
+    const discoveryTasks: Promise<void>[] = [];
 
-    // Search LeetCode API if LeetCode URL is not yet resolved
     if (!leetcodeUrl) {
-      try {
-        const lcResponse = await fetch('https://leetcode.com/api/problems/all/', {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          next: { revalidate: 3600 }
-        });
-        if (lcResponse.ok) {
-          const lcData = await lcResponse.json();
-          const match = lcData.stat_status_pairs.find(
-            (p: any) => areTitlesEquivalent(p.stat.question__title, title)
-          );
-          if (match) {
-            leetcodeUrl = `https://leetcode.com/problems/${match.stat.question__title_slug}/`;
-            console.log(`- Matched LeetCode equivalent URL: ${leetcodeUrl}`);
-          }
+      discoveryTasks.push((async () => {
+        const result = await findPlatformLink(title, 'leetcode.com');
+        if (result && verifyMatch(title, result.title)) {
+          leetcodeUrl = result.link;
+          console.log(`- Discovered LeetCode URL: ${leetcodeUrl}`);
+        } else {
+          // Fallback to official API
+          try {
+            const lcResponse = await fetch('https://leetcode.com/api/problems/all/', {
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+              next: { revalidate: 3600 }
+            });
+            if (lcResponse.ok) {
+              const lcData = await lcResponse.json();
+              const match = lcData.stat_status_pairs.find(
+                (p: any) => areTitlesEquivalent(p.stat.question__title, title)
+              );
+              if (match) {
+                leetcodeUrl = `https://leetcode.com/problems/${match.stat.question__title_slug}/`;
+                console.log(`- Matched LeetCode equivalent URL via API: ${leetcodeUrl}`);
+              }
+            }
+          } catch (e) {}
         }
-      } catch (e) {}
+      })());
     }
 
-    // Search Codeforces API if Codeforces URL is not yet resolved
     if (!codeforcesUrl) {
-      try {
-        const cfResponse = await fetch('https://codeforces.com/api/problemset.problems', {
-          next: { revalidate: 3600 }
-        });
-        if (cfResponse.ok) {
-          const cfData = await cfResponse.json();
-          const match = cfData.result.problems.find(
-            (p: any) => areTitlesEquivalent(p.name, title)
-          );
-          if (match) {
-            codeforcesUrl = `https://codeforces.com/problemset/problem/${match.contestId}/${match.index}`;
-            console.log(`- Matched Codeforces equivalent URL: ${codeforcesUrl}`);
-          }
+      discoveryTasks.push((async () => {
+        const result = await findPlatformLink(title, 'codeforces.com');
+        if (result && verifyMatch(title, result.title)) {
+          codeforcesUrl = result.link;
+          console.log(`- Discovered Codeforces URL: ${codeforcesUrl}`);
+        } else {
+          // Fallback to official API
+          try {
+            const cfResponse = await fetch('https://codeforces.com/api/problemset.problems', {
+              next: { revalidate: 3600 }
+            });
+            if (cfResponse.ok) {
+              const cfData = await cfResponse.json();
+              const match = cfData.result.problems.find(
+                (p: any) => areTitlesEquivalent(p.name, title)
+              );
+              if (match) {
+                codeforcesUrl = `https://codeforces.com/problemset/problem/${match.contestId}/${match.index}`;
+                console.log(`- Matched Codeforces equivalent URL via API: ${codeforcesUrl}`);
+              }
+            }
+          } catch (e) {}
         }
-      } catch (e) {}
+      })());
     }
 
-    // Auto-discover GeeksforGeeks if missing
     if (!geeksforgeeksUrl) {
-      const gfgUrlFound = await findValidUrl(candidates, 'geeksforgeeks');
-      if (gfgUrlFound) {
-        geeksforgeeksUrl = gfgUrlFound;
-        console.log(`- Discovered GeeksforGeeks URL: ${geeksforgeeksUrl}`);
-      }
+      discoveryTasks.push((async () => {
+        const result = await findPlatformLink(title, 'geeksforgeeks.org');
+        if (result && verifyMatch(title, result.title)) {
+          geeksforgeeksUrl = result.link;
+          console.log(`- Discovered GeeksforGeeks URL: ${geeksforgeeksUrl}`);
+        }
+      })());
     }
 
-    // Auto-discover HackerRank if missing
     if (!hackerrankUrl) {
-      const hrUrlFound = await findValidUrl(candidates, 'hackerrank');
-      if (hrUrlFound) {
-        hackerrankUrl = hrUrlFound;
-        console.log(`- Discovered HackerRank URL: ${hackerrankUrl}`);
-      }
+      discoveryTasks.push((async () => {
+        const result = await findPlatformLink(title, 'hackerrank.com');
+        if (result && verifyMatch(title, result.title)) {
+          hackerrankUrl = result.link;
+          console.log(`- Discovered HackerRank URL: ${hackerrankUrl}`);
+        }
+      })());
     }
 
-    // Auto-discover CodeChef if missing
     if (!codechefUrl) {
-      const ccUrlFound = await findValidUrl(candidates, 'codechef');
-      if (ccUrlFound) {
-        codechefUrl = ccUrlFound;
-        console.log(`- Discovered CodeChef URL: ${codechefUrl}`);
-      }
+      discoveryTasks.push((async () => {
+        const result = await findPlatformLink(title, 'codechef.com');
+        if (result && verifyMatch(title, result.title)) {
+          codechefUrl = result.link;
+          console.log(`- Discovered CodeChef URL: ${codechefUrl}`);
+        }
+      })());
     }
+
+    await Promise.all(discoveryTasks);
 
     // 5. Save/Update record in database
     try {

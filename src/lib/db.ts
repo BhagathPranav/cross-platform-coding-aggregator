@@ -272,6 +272,172 @@ class DatabaseService {
       return false;
     }
   }
+
+  /**
+   * Finds a problem by LeetCode slug.
+   * Can be called on the server or client.
+   */
+  async findProblemByLeetcodeSlug(slug: string): Promise<CodingProblem | null> {
+    const isOnline = await this.checkConnection();
+    if (!isOnline) {
+      return MOCK_PROBLEMS.find(p => {
+        if (!p.leetcode_url) return false;
+        return p.leetcode_url.toLowerCase().includes(`/problems/${slug.toLowerCase()}`);
+      }) || null;
+    }
+
+    try {
+      const records = await pb.collection('problems').getFullList({
+        filter: `leetcode_url ~ "/problems/${slug}"`,
+      });
+      if (records.length > 0) {
+        const r = records[0];
+        return {
+          id: r.id,
+          title: r.title,
+          difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
+          leetcode_url: r.leetcode_url || null,
+          codeforces_url: r.codeforces_url || null,
+          hackerrank_url: r.hackerrank_url || null,
+          codechef_url: r.codechef_url || null,
+          gfg_url: r.geeksforgeeks_url || null,
+        };
+      }
+    } catch (e) {
+      console.error('PocketBase findProblemByLeetcodeSlug failed:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Updates a problem's URLs in PocketBase.
+   * Server-side only! Requires admin credentials.
+   */
+  async updateProblemUrls(
+    problemId: string, 
+    urls: {
+      leetcode_url?: string | null;
+      codeforces_url?: string | null;
+      hackerrank_url?: string | null;
+      codechef_url?: string | null;
+      gfg_url?: string | null;
+    }
+  ): Promise<CodingProblem | null> {
+    const isOnline = await this.checkConnection();
+    if (!isOnline) {
+      const index = MOCK_PROBLEMS.findIndex(p => p.id === problemId);
+      if (index > -1) {
+        MOCK_PROBLEMS[index] = {
+          ...MOCK_PROBLEMS[index],
+          leetcode_url: urls.leetcode_url !== undefined ? urls.leetcode_url : MOCK_PROBLEMS[index].leetcode_url,
+          codeforces_url: urls.codeforces_url !== undefined ? urls.codeforces_url : MOCK_PROBLEMS[index].codeforces_url,
+          hackerrank_url: urls.hackerrank_url !== undefined ? urls.hackerrank_url : MOCK_PROBLEMS[index].hackerrank_url,
+          codechef_url: urls.codechef_url !== undefined ? urls.codechef_url : MOCK_PROBLEMS[index].codechef_url,
+          gfg_url: urls.gfg_url !== undefined ? urls.gfg_url : MOCK_PROBLEMS[index].gfg_url,
+        };
+        return MOCK_PROBLEMS[index];
+      }
+      return null;
+    }
+
+    try {
+      const PocketBase = (await import('pocketbase')).default;
+      const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
+      const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL || 'admin@aggregator.local';
+      const adminPassword = process.env.POCKETBASE_ADMIN_PASSWORD || 'admin123456789';
+
+      const pbAdmin = new PocketBase(pbUrl);
+      await pbAdmin.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+
+      const updateData: any = {};
+      if (urls.leetcode_url !== undefined) updateData.leetcode_url = urls.leetcode_url;
+      if (urls.codeforces_url !== undefined) updateData.codeforces_url = urls.codeforces_url;
+      if (urls.hackerrank_url !== undefined) updateData.hackerrank_url = urls.hackerrank_url;
+      if (urls.codechef_url !== undefined) updateData.codechef_url = urls.codechef_url;
+      if (urls.gfg_url !== undefined) updateData.geeksforgeeks_url = urls.gfg_url;
+
+      const r = await pbAdmin.collection('problems').update(problemId, updateData);
+      return {
+        id: r.id,
+        title: r.title,
+        difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
+        leetcode_url: r.leetcode_url || null,
+        codeforces_url: r.codeforces_url || null,
+        hackerrank_url: r.hackerrank_url || null,
+        codechef_url: r.codechef_url || null,
+        gfg_url: r.geeksforgeeks_url || null,
+      };
+    } catch (e) {
+      console.error('PocketBase updateProblemUrls failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Creates a new problem record in PocketBase.
+   * Server-side only! Requires admin credentials.
+   */
+  async createProblem(
+    data: {
+      title: string;
+      difficulty: 'Easy' | 'Medium' | 'Hard';
+      leetcode_url?: string | null;
+      codeforces_url?: string | null;
+      hackerrank_url?: string | null;
+      codechef_url?: string | null;
+      gfg_url?: string | null;
+    }
+  ): Promise<CodingProblem | null> {
+    const isOnline = await this.checkConnection();
+    if (!isOnline) {
+      const newProblem: CodingProblem = {
+        id: `prob-${Date.now()}`,
+        title: data.title,
+        difficulty: data.difficulty,
+        leetcode_url: data.leetcode_url || null,
+        codeforces_url: data.codeforces_url || null,
+        hackerrank_url: data.hackerrank_url || null,
+        codechef_url: data.codechef_url || null,
+        gfg_url: data.gfg_url || null,
+      };
+      MOCK_PROBLEMS.push(newProblem);
+      return newProblem;
+    }
+
+    try {
+      const PocketBase = (await import('pocketbase')).default;
+      const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
+      const adminEmail = process.env.POCKETBASE_ADMIN_EMAIL || 'admin@aggregator.local';
+      const adminPassword = process.env.POCKETBASE_ADMIN_PASSWORD || 'admin123456789';
+
+      const pbAdmin = new PocketBase(pbUrl);
+      await pbAdmin.collection('_superusers').authWithPassword(adminEmail, adminPassword);
+
+      const r = await pbAdmin.collection('problems').create({
+        title: data.title,
+        difficulty: data.difficulty,
+        leetcode_url: data.leetcode_url || null,
+        codeforces_url: data.codeforces_url || null,
+        hackerrank_url: data.hackerrank_url || null,
+        codechef_url: data.codechef_url || null,
+        geeksforgeeks_url: data.gfg_url || null,
+      });
+
+      return {
+        id: r.id,
+        title: r.title,
+        difficulty: r.difficulty as 'Easy' | 'Medium' | 'Hard',
+        leetcode_url: r.leetcode_url || null,
+        codeforces_url: r.codeforces_url || null,
+        hackerrank_url: r.hackerrank_url || null,
+        codechef_url: r.codechef_url || null,
+        gfg_url: r.geeksforgeeks_url || null,
+      };
+    } catch (e) {
+      console.error('PocketBase createProblem failed:', e);
+      return null;
+    }
+  }
 }
 
 export const dbService = new DatabaseService();
