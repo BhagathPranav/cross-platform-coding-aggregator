@@ -110,3 +110,20 @@ export function findProblemBySlug(problems: CodingProblem[], slug: string): Codi
   }
   return null;
 }
+
+/**
+ * Generates pre-filled search redirect links for each platform based on the problem title.
+ * 
+ * @param {string} title - The problem title (e.g. "Two Sum").
+ * @returns {Record<string, string>} Map of platform keys to search redirect URLs.
+ */
+export function generateSearchLinks(title: string): Record<string, string> {
+  const encoded = encodeURIComponent(title.trim());
+  return {
+    leetcode: `https://leetcode.com/problemset/?search=${encoded}`,
+    geeksforgeeks: `https://www.geeksforgeeks.org/explore?page=1&q=${encoded}`,
+    hackerrank: `https://www.hackerrank.com/challenges?search=${encoded}`,
+    codechef: `https://www.codechef.com/problems?search=${encoded}`,
+    codeforces: `https://codeforces.com/search?keyword=${encoded}`
+  };
+}

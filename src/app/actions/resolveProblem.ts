@@ -3,7 +3,6 @@
 import PocketBase from 'pocketbase';
 import { CodingProblem } from '@/lib/db';
 import { parseProblemUrl } from '@/lib/parser';
-import { findPlatformLink, verifyMatch } from '@/lib/discovery';
 
 // Admin details for database caching (read on server only)
 const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
@@ -241,95 +240,6 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       console.warn('PocketBase admin connection failed during initial lookup, using local representation:', pbErr);
     }
 
-    // 4. Resolve remaining missing URLs across platforms using Dynamic Meta-Search & Verification
-    const discoveryTasks: Promise<void>[] = [];
-
-    if (!leetcodeUrl) {
-      discoveryTasks.push((async () => {
-        const result = await findPlatformLink(title, 'leetcode.com');
-        if (result && verifyMatch(title, result.title)) {
-          leetcodeUrl = result.link;
-          console.log(`- Discovered LeetCode URL: ${leetcodeUrl}`);
-        } else {
-          // Fallback to official API
-          try {
-            const lcResponse = await fetch('https://leetcode.com/api/problems/all/', {
-              headers: { 'User-Agent': 'Mozilla/5.0' },
-              next: { revalidate: 3600 }
-            });
-            if (lcResponse.ok) {
-              const lcData = await lcResponse.json();
-              const match = lcData.stat_status_pairs.find(
-                (p: any) => areTitlesEquivalent(p.stat.question__title, title)
-              );
-              if (match) {
-                leetcodeUrl = `https://leetcode.com/problems/${match.stat.question__title_slug}/`;
-                console.log(`- Matched LeetCode equivalent URL via API: ${leetcodeUrl}`);
-              }
-            }
-          } catch (e) {}
-        }
-      })());
-    }
-
-    if (!codeforcesUrl) {
-      discoveryTasks.push((async () => {
-        const result = await findPlatformLink(title, 'codeforces.com');
-        if (result && verifyMatch(title, result.title)) {
-          codeforcesUrl = result.link;
-          console.log(`- Discovered Codeforces URL: ${codeforcesUrl}`);
-        } else {
-          // Fallback to official API
-          try {
-            const cfResponse = await fetch('https://codeforces.com/api/problemset.problems', {
-              next: { revalidate: 3600 }
-            });
-            if (cfResponse.ok) {
-              const cfData = await cfResponse.json();
-              const match = cfData.result.problems.find(
-                (p: any) => areTitlesEquivalent(p.name, title)
-              );
-              if (match) {
-                codeforcesUrl = `https://codeforces.com/problemset/problem/${match.contestId}/${match.index}`;
-                console.log(`- Matched Codeforces equivalent URL via API: ${codeforcesUrl}`);
-              }
-            }
-          } catch (e) {}
-        }
-      })());
-    }
-
-    if (!geeksforgeeksUrl) {
-      discoveryTasks.push((async () => {
-        const result = await findPlatformLink(title, 'geeksforgeeks.org');
-        if (result && verifyMatch(title, result.title)) {
-          geeksforgeeksUrl = result.link;
-          console.log(`- Discovered GeeksforGeeks URL: ${geeksforgeeksUrl}`);
-        }
-      })());
-    }
-
-    if (!hackerrankUrl) {
-      discoveryTasks.push((async () => {
-        const result = await findPlatformLink(title, 'hackerrank.com');
-        if (result && verifyMatch(title, result.title)) {
-          hackerrankUrl = result.link;
-          console.log(`- Discovered HackerRank URL: ${hackerrankUrl}`);
-        }
-      })());
-    }
-
-    if (!codechefUrl) {
-      discoveryTasks.push((async () => {
-        const result = await findPlatformLink(title, 'codechef.com');
-        if (result && verifyMatch(title, result.title)) {
-          codechefUrl = result.link;
-          console.log(`- Discovered CodeChef URL: ${codechefUrl}`);
-        }
-      })());
-    }
-
-    await Promise.all(discoveryTasks);
 
     // 5. Save/Update record in database
     try {
