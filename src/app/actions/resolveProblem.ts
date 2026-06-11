@@ -141,6 +141,11 @@ async function findValidUrl(
         if (response.ok || response.status === 301 || response.status === 302) {
           const finalUrl = response.url;
           if (finalUrl && finalUrl.includes('/problems/') && !finalUrl.endsWith('/problems/')) {
+            // Read HTML text to verify it's not a generic/error page (which GFG serves with HTTP 200)
+            const html = await response.text();
+            if (html.includes('Something went wrong') || html.includes('Oops!!') || html.includes('<title>Practice | GeeksforGeeks')) {
+              continue; // This is a server-side error page, not a valid problem!
+            }
             return finalUrl;
           }
         }
@@ -262,7 +267,11 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
               .replace(/\s*\|\s*LeetCode.*/i, '')
               .trim();
             
-            if (extractedTitle) {
+            const lowerExtracted = extractedTitle.toLowerCase();
+            const isGenericTitle = lowerExtracted.includes('computer science portal') || 
+                                   lowerExtracted === 'practice' || 
+                                   lowerExtracted.includes('something went wrong');
+            if (extractedTitle && !isGenericTitle) {
               title = extractedTitle;
             }
           }
