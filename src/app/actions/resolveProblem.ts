@@ -190,16 +190,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       } catch (e) {}
     }
 
-    // For other platforms, generate predicted search redirection links if not resolved
-    if (!hackerrankUrl) {
-      hackerrankUrl = `https://www.hackerrank.com/domains/algorithms?search=${encodeURIComponent(title)}`;
-    }
-    if (!codechefUrl) {
-      codechefUrl = `https://www.codechef.com/search?search=${encodeURIComponent(title)}`;
-    }
-    if (!geeksforgeeksUrl) {
-      geeksforgeeksUrl = `https://www.geeksforgeeks.org/problems/search?search=${encodeURIComponent(title)}`;
-    }
+    // For other platforms, do not generate search redirection URLs. If not resolved, they remain empty.
 
     // 4. Save/Cache resolved problem in database
     const pbAdmin = new PocketBase(pbUrl);

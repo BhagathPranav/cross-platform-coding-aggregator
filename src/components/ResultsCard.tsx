@@ -26,13 +26,22 @@ export function ResultsCard({ problem }: ResultsCardProps) {
     Hard: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
   };
 
-  const platforms: { name: 'leetcode' | 'codeforces' | 'hackerrank' | 'codechef' | 'geeksforgeeks'; label: string; url?: string }[] = [
+  const isValidProblemUrl = (url?: string) => {
+    if (!url) return false;
+    const lowerUrl = url.toLowerCase();
+    if (lowerUrl.includes('search?search=') || lowerUrl.includes('domains/algorithms?search=')) {
+      return false;
+    }
+    return true;
+  };
+
+  const platforms = [
     { name: 'leetcode', label: 'LeetCode', url: problem.leetcodeUrl },
     { name: 'codeforces', label: 'Codeforces', url: problem.codeforcesUrl },
     { name: 'hackerrank', label: 'HackerRank', url: problem.hackerrankUrl },
     { name: 'codechef', label: 'CodeChef', url: problem.codechefUrl },
     { name: 'geeksforgeeks', label: 'GeeksforGeeks', url: problem.geeksforgeeksUrl },
-  ];
+  ].filter((p) => isValidProblemUrl(p.url)) as { name: 'leetcode' | 'codeforces' | 'hackerrank' | 'codechef' | 'geeksforgeeks'; label: string; url: string }[];
 
   return (
     <div 
@@ -76,38 +85,24 @@ export function ResultsCard({ problem }: ResultsCardProps) {
           Available Platforms
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {platforms.map((platform) => {
-            const isActive = !!platform.url;
-            return isActive ? (
-              <a
-                id={`link-${problem.id}-${platform.name}`}
-                key={platform.name}
-                href={platform.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 hover:border-indigo-500/30 transition-all duration-200 group/link"
-              >
-                <div className="flex items-center gap-2.5">
-                  <PlatformIcon name={platform.name} size={18} />
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover/link:text-indigo-600 dark:group-hover/link:text-indigo-400 transition-colors">
-                    {platform.label}
-                  </span>
-                </div>
-                <ExternalLink size={14} className="text-slate-400 group-hover/link:text-indigo-500 transition-colors opacity-0 group-hover/link:opacity-100 transform translate-x-[-4px] group-hover/link:translate-x-0 transition-transform duration-200" />
-              </a>
-            ) : (
-              <div
-                key={platform.name}
-                className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-100 dark:border-slate-900/30 bg-slate-100/40 dark:bg-slate-900/10 opacity-30 select-none cursor-not-allowed"
-                title={`${platform.label} link not available`}
-              >
-                <PlatformIcon name={platform.name} size={18} className="grayscale" />
-                <span className="text-sm font-medium text-slate-400 dark:text-slate-600">
+          {platforms.map((platform) => (
+            <a
+              id={`link-${problem.id}-${platform.name}`}
+              key={platform.name}
+              href={platform.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-3 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 hover:border-indigo-500/30 transition-all duration-200 group/link"
+            >
+              <div className="flex items-center gap-2.5">
+                <PlatformIcon name={platform.name} size={18} />
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover/link:text-indigo-600 dark:group-hover/link:text-indigo-400 transition-colors">
                   {platform.label}
                 </span>
               </div>
-            );
-          })}
+              <ExternalLink size={14} className="text-slate-400 group-hover/link:text-indigo-500 transition-colors opacity-0 group-hover/link:opacity-100 transform translate-x-[-4px] group-hover/link:translate-x-0 transition-transform duration-200" />
+            </a>
+          ))}
         </div>
       </div>
     </div>
