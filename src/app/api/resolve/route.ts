@@ -1,30 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { dbService, CodingProblem } from '@/lib/db';
 import { parseProblemUrl } from '@/lib/parser';
 import { fetchLeetCodeTitle } from '@/lib/leetcodeApi';
-import { findPlatformMatches } from '@/lib/matcher';
-
-// In-memory caching for database problems list (1-minute TTL)
-let cachedProblems: CodingProblem[] | null = null;
-let cacheTime = 0;
-const CACHE_DURATION = 60 * 1000; // 60 seconds
-
-async function getProblemsCached(): Promise<CodingProblem[]> {
-  const now = Date.now();
-  if (!cachedProblems || (now - cacheTime) > CACHE_DURATION) {
-    console.log('[API Resolve] Cache miss or TTL expired. Querying PocketBase database...');
-    cachedProblems = await dbService.getProblems();
-    cacheTime = now;
-  } else {
-    console.log('[API Resolve] Cache hit. Retrieving problems from in-memory cache.');
-  }
-  return cachedProblems;
-}
+import { getCrossPlatformLinks } from '@/lib/aiRouter';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    let { slug, url } = body;
+    let { slug, url, title } = body;
+
+    // If slug and url are missing but title is provided, try to extract slug or normalize title
+    if (!slug && !url && title) {
+      const parsed = parseProblemUrl(title);
+      if (parsed) {
+        url = title;
+        if (parsed.platform === 'leetcode') {
+          slug = parsed.slug;
+        }
+      } else {
+        // Normalize title to slug
+        slug = title
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-');
+      }
+    }
 
     // Extract slug from URL if a LeetCode URL is provided
     if (url) {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     if (!slug) {
       return NextResponse.json(
-        { success: false, message: 'LeetCode slug or url is required' },
+        { success: false, message: 'LeetCode slug, url, or title is required' },
         { status: 400 }
       );
     }
@@ -55,16 +55,19 @@ export async function POST(req: NextRequest) {
       console.log(`[API Resolve] LeetCode API lookup failed. Normalizing slug fallback: "${canonicalTitle}"`);
     }
 
-    // 3. Query the cached database problems list
-    const problems = await getProblemsCached();
-
-    // 4. Pass the canonical title and problem data to the Fuzzy Matcher
-    const matchedProblem = findPlatformMatches(canonicalTitle!, problems);
+    // 3. Always use the search-augmented AI Router to find verified URLs
+    console.log(`[API Resolve] Calling AI Router (web search + LLM) for: "${canonicalTitle}"`);
+    const aiLinks = await getCrossPlatformLinks(canonicalTitle!);
 
     return NextResponse.json({
       success: true,
       title: canonicalTitle,
-      problem: matchedProblem
+      leetcode: aiLinks?.leetcode || `https://leetcode.com/problems/${slug}/`,
+      geeksforgeeks: aiLinks?.geeksforgeeks || null,
+      hackerrank: aiLinks?.hackerrank || null,
+      codechef: aiLinks?.codechef || null,
+      codeforces: aiLinks?.codeforces || null,
+      problem: null
     });
   } catch (error: any) {
     console.error('[API Resolve] Resolution route error:', error);

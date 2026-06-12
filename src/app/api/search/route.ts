@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbService, CodingProblem } from '@/lib/db';
-import { findPlatformLink, verifyMatch } from '@/lib/discovery';
+import { getCrossPlatformLinks } from '@/lib/aiRouter';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,13 +18,11 @@ export async function POST(req: NextRequest) {
     // 1. Check cache in database
     let problem: CodingProblem | null = await dbService.findProblemByLeetcodeSlug(leetcodeSlug);
     
-    let isNew = false;
     let title = reqTitle || '';
     let difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium';
     let leetcodeUrl = problem?.leetcode_url || `https://leetcode.com/problems/${leetcodeSlug}/`;
 
     if (!problem) {
-      isNew = true;
       console.log(`[API Route] Cache miss. Problem with slug "${leetcodeSlug}" not found in DB. Resolving from LeetCode...`);
       
       // Try to fetch official details from LeetCode API
@@ -72,19 +70,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Identify missing platform links
-    const missingPlatforms: { platform: string; domain: string; key: keyof CodingProblem }[] = [];
-    if (!problem.gfg_url) {
-      missingPlatforms.push({ platform: 'geeksforgeeks', domain: 'geeksforgeeks.org', key: 'gfg_url' });
-    }
-    if (!problem.hackerrank_url) {
-      missingPlatforms.push({ platform: 'hackerrank', domain: 'hackerrank.com', key: 'hackerrank_url' });
-    }
-    if (!problem.codechef_url) {
-      missingPlatforms.push({ platform: 'codechef', domain: 'codechef.com', key: 'codechef_url' });
-    }
-    if (!problem.codeforces_url) {
-      missingPlatforms.push({ platform: 'codeforces', domain: 'codeforces.com', key: 'codeforces_url' });
-    }
+    const missingPlatforms: string[] = [];
+    if (!problem.gfg_url) missingPlatforms.push('geeksforgeeks');
+    if (!problem.hackerrank_url) missingPlatforms.push('hackerrank');
+    if (!problem.codechef_url) missingPlatforms.push('codechef');
+    if (!problem.codeforces_url) missingPlatforms.push('codeforces');
 
     // If there are no missing links, return the cached result immediately
     if (missingPlatforms.length === 0) {
@@ -92,46 +82,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, problem });
     }
 
-    console.log(`[API Route] Cache partial miss. Discovered ${missingPlatforms.length} missing links for "${title}". Starting dynamic discovery...`);
+    console.log(`[API Route] Missing links for ${missingPlatforms.join(', ')}. Using AI Router with web search...`);
 
-    // 3. Fire dynamic searches in parallel
-    const searchPromises = missingPlatforms.map(async (p) => {
-      try {
-        const result = await findPlatformLink(title, p.domain);
-        if (result) {
-          // Verify matches using string-similarity (Dice's Coefficient)
-          const isValid = verifyMatch(title, result.title);
-          if (isValid) {
-            return { key: p.key, link: result.link };
-          }
-          console.warn(`[API Route] Verification failed for ${p.platform}. Discovered title: "${result.title}" does not match original: "${title}".`);
-        }
-      } catch (err) {
-        console.error(`[API Route] Search failed for ${p.platform}:`, err);
-      }
-      return { key: p.key, link: null };
-    });
+    // 3. Use the new search-augmented AI router (searches web → feeds to LLM → validated URLs)
+    const aiLinks = await getCrossPlatformLinks(title);
 
-    const searchResults = await Promise.all(searchPromises);
+    // 4. Map AI results to DB column names and update
+    const keyMap: Record<string, keyof CodingProblem> = {
+      geeksforgeeks: 'gfg_url',
+      hackerrank: 'hackerrank_url',
+      codechef: 'codechef_url',
+      codeforces: 'codeforces_url',
+    };
 
-    // 4. Update the problem record with newly discovered and verified URLs
-    const updates: any = {};
+    const updates: Partial<Record<string, string>> = {};
     let hasNewLinks = false;
-    for (const result of searchResults) {
-      if (result.link) {
-        updates[result.key] = result.link;
-        hasNewLinks = true;
+
+    for (const platform of missingPlatforms) {
+      const url = aiLinks[platform];
+      if (url) {
+        const dbKey = keyMap[platform];
+        if (dbKey) {
+          updates[dbKey] = url;
+          hasNewLinks = true;
+        }
       }
     }
 
     if (hasNewLinks) {
-      console.log(`[API Route] Saving verified links to PocketBase:`, updates);
+      console.log(`[API Route] Saving AI-discovered links to PocketBase:`, updates);
       const updatedProblem = await dbService.updateProblemUrls(problem.id, updates);
       if (updatedProblem) {
         problem = updatedProblem;
       }
     } else {
-      console.log(`[API Route] No new matching links discovered for "${title}".`);
+      console.log(`[API Route] No matching links discovered for "${title}".`);
     }
 
     return NextResponse.json({ success: true, problem });
