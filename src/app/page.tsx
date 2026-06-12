@@ -10,9 +10,8 @@ import { dbService, CodingProblem } from '@/lib/db';
 import { useAuth } from '@/app/providers';
 import { ResultsCard } from '@/components/ResultsCard';
 import { LoginModal } from '@/components/LoginModal';
-import { parseProblemUrl, findProblemBySlug } from '@/lib/parser';
+import { parseProblemUrl, findProblemBySlug, normalizeTitleToSlug } from '@/lib/parser';
 import { resolveProblemAction } from '@/app/actions/resolveProblem';
-import Fuse from 'fuse.js';
 
 export default function Home() {
   const { theme, setTheme } = useTheme();
@@ -23,13 +22,12 @@ export default function Home() {
   const [problems, setProblems] = useState<CodingProblem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'All' | 'Easy' | 'Medium' | 'Hard'>('All');
-  const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [matchedUrlPlatform, setMatchedUrlPlatform] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [resolvedLinks, setResolvedLinks] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Resolution States
   const [resolving, setResolving] = useState(false);
-  const [resolvingError, setResolvingError] = useState('');
   const [resolvingSuccess, setResolvingSuccess] = useState('');
 
   // Fetch problems on mount
@@ -46,10 +44,50 @@ export default function Home() {
     return !!parseProblemUrl(searchQuery);
   }, [searchQuery]);
 
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+    setResolvedLinks(null);
+
+    try {
+      // 1. Force a network request to the backend route instead of checking local DB
+      const response = await fetch('/api/resolve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: searchQuery }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resolve platform links');
+      }
+
+      const data = await response.json();
+      
+      // 2. Save the dynamic URLs returned by the API into a dedicated state variable
+      // This payload should look like: { leetcode: '...', geeksforgeeks: '...', etc. }
+      if (data.success) {
+        setResolvedLinks(data);
+      } else {
+        throw new Error(data.message || 'Failed to resolve platform links');
+      }
+
+    } catch (err: any) {
+      console.error("Search Error:", err);
+      setError(err.message || "Something went wrong");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleResolveProblem = async () => {
     if (!searchQuery.trim()) return;
     setResolving(true);
-    setResolvingError('');
+    setError(null);
     setResolvingSuccess('');
     
     try {
@@ -58,82 +96,41 @@ export default function Home() {
         setProblems(prev => [res.problem!, ...prev]);
         setResolvingSuccess(`Successfully resolved "${res.problem.title}" and cached in database!`);
         setSearchQuery('');
+        setResolvedLinks(null);
       } else {
-        setResolvingError(res.message || 'Failed to resolve the problem from the live URL.');
+        setError(res.message || 'Failed to resolve the problem from the live URL.');
       }
     } catch (err: any) {
-      setResolvingError(err.message || 'An unexpected error occurred during resolution.');
+      setError(err.message || 'An unexpected error occurred during resolution.');
     } finally {
       setResolving(false);
     }
   };
 
-  // Initialize Fuse.js for fuzzy searching on problem fields
-  const fuse = useMemo(() => {
-    return new Fuse(problems, {
-      keys: ['title'],
-      threshold: 0.35,
-    });
-  }, [problems]);
-
-  // Core Search & Filtering Processing
+  // Display ONLY bookmarked problems in the bottom section, filtered by difficulty
   const filteredProblems = useMemo(() => {
-    let result = [...problems];
+    let result = problems.filter(p => bookmarks.includes(p.id));
 
-    // 1. Check if Bookmarked Only is enabled
-    if (showBookmarksOnly) {
-      result = result.filter(p => bookmarks.includes(p.id));
-    }
-
-    // 2. Filter by difficulty
     if (selectedDifficulty !== 'All') {
       result = result.filter(p => p.difficulty === selectedDifficulty);
     }
 
-    // 3. Process search query
-    if (searchQuery.trim()) {
-      const urlMatch = parseProblemUrl(searchQuery);
-      
-      if (urlMatch) {
-        // Input is a valid URL, search using parsed slug
-        const matchedProblem = findProblemBySlug(problems, urlMatch.slug);
-        if (matchedProblem) {
-          result = result.filter(p => p.id === matchedProblem.id);
-        } else {
-          result = []; // No match found for this URL
-        }
-      } else {
-        // Standard text fuzzy search
-        const fuzzyResults = fuse.search(searchQuery);
-        result = result.filter(p => fuzzyResults.some(fr => fr.item.id === p.id));
-      }
-    }
-
     return result;
-  }, [problems, searchQuery, selectedDifficulty, showBookmarksOnly, bookmarks, fuse]);
+  }, [problems, selectedDifficulty, bookmarks]);
 
   // Auto-detect URL input and show indicator
-  useEffect(() => {
+  const matchedUrlPlatform = useMemo(() => {
     const urlMatch = parseProblemUrl(searchQuery);
-    if (urlMatch) {
-      setMatchedUrlPlatform(urlMatch.platform);
-    } else {
-      setMatchedUrlPlatform(null);
-    }
+    return urlMatch ? urlMatch.platform : null;
   }, [searchQuery]);
 
-  // Handle simulated loader when typing/searching to enhance user experience
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    setSearchLoading(true);
-    const timeout = setTimeout(() => {
-      setSearchLoading(false);
-    }, 350);
-    return () => clearTimeout(timeout);
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
+    setResolvedLinks(null);
   };
 
   // Prevent hydration mismatches by returning loading placeholder until mounted
@@ -232,7 +229,7 @@ export default function Home() {
 
         {/* UNIFIED SEARCH CONTAINER */}
         <section className="max-w-2xl mx-auto w-full mb-12">
-          <div className="relative group">
+          <form onSubmit={handleSearch} className="relative group">
             
             {/* Search Glow effect */}
             <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl blur opacity-30 group-hover:opacity-45 transition duration-300" />
@@ -251,25 +248,29 @@ export default function Home() {
 
               {searchQuery && (
                 <button
+                  type="button"
                   onClick={handleClearSearch}
-                  className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors mr-1"
+                  className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors mr-1 cursor-pointer"
                   title="Clear search"
                 >
                   <X size={16} />
                 </button>
               )}
 
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold font-mono border border-slate-200 dark:border-slate-700/50">
-                🔍 fuzzy
-              </div>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold border border-indigo-700/50 transition-colors cursor-pointer shrink-0"
+              >
+                Search
+              </button>
             </div>
-          </div>
+          </form>
 
           {/* Paste URL detection indicator */}
           {matchedUrlPlatform && (
             <div className="mt-3 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-500/15 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 text-xs font-semibold animate-in fade-in slide-in-from-top-1 duration-150">
               <Info size={14} className="shrink-0" />
-              <span>Detected pasted URL from <strong>{matchedUrlPlatform.toUpperCase()}</strong>! Resolving equivalents...</span>
+              <span>Detected pasted URL from <strong>{matchedUrlPlatform.toUpperCase()}</strong>! Press Enter or Search to resolve...</span>
             </div>
           )}
 
@@ -285,145 +286,121 @@ export default function Home() {
             </div>
           )}
 
-          {resolvingError && (
+          {error && (
             <div className="mt-3 flex items-center justify-between gap-1.5 px-4 py-3 rounded-xl border border-rose-500/15 bg-rose-500/5 text-rose-600 dark:text-rose-400 text-sm font-semibold animate-in fade-in slide-in-from-top-1 duration-150">
               <div className="flex items-center gap-2">
                 <Info size={16} className="shrink-0" />
-                <span>{resolvingError}</span>
+                <span>{error}</span>
               </div>
-              <button onClick={() => setResolvingError('')} className="p-1 rounded-full hover:bg-rose-500/10 text-rose-500 cursor-pointer">
+              <button onClick={() => setError(null)} className="p-1 rounded-full hover:bg-rose-500/10 text-rose-500 cursor-pointer">
                 <X size={14} />
               </button>
             </div>
           )}
         </section>
 
-        {/* FILTER BAR SECTION */}
-        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/50 dark:border-slate-950 pb-5 mb-8">
-          
-          {/* Main Filter Tabs */}
-          <div className="flex items-center gap-2.5 bg-slate-100/80 dark:bg-slate-900/60 p-1 rounded-xl border border-slate-200/60 dark:border-slate-800/60 self-start">
-            <button
-              id="filter-all-btn"
-              onClick={() => setShowBookmarksOnly(false)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!showBookmarksOnly ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-            >
-              All Problems ({problems.length})
-            </button>
-            <button
-              id="filter-bookmarks-btn"
-              onClick={() => setShowBookmarksOnly(true)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 ${showBookmarksOnly ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-            >
-              <Bookmark size={14} className={showBookmarksOnly ? 'fill-indigo-500 text-indigo-500' : ''} />
-              <span>Bookmarks ({bookmarks.length})</span>
-            </button>
-          </div>
-
-          {/* Difficulty and Filter settings */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 text-slate-400 mr-1.5">
-              <SlidersHorizontal size={14} />
-              <span className="text-xs font-semibold uppercase tracking-wider">Difficulty</span>
-            </div>
-            
-            {(['All', 'Easy', 'Medium', 'Hard'] as const).map((diff) => (
-              <button
-                key={diff}
-                onClick={() => setSelectedDifficulty(diff)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                  selectedDifficulty === diff
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/10'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
-              >
-                {diff}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* RESULTS GRID / LOADER */}
-        <section className="flex-1">
-          {resolving ? (
-            // Resolving server action loading state
-            <div className="col-span-full glass-panel border border-indigo-500/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl shadow-indigo-500/5">
-              <RefreshCw className="animate-spin text-indigo-500" size={36} />
-              <h4 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">Resolving Problem Details</h4>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
-                Contacting platform API endpoints, matching equivalent problem URLs, and saving to your database. This may take a few seconds...
-              </p>
-            </div>
-          ) : searchLoading ? (
-            // Skeleton loader state
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="glass-panel border border-slate-200/50 dark:border-slate-900 rounded-2xl p-6 space-y-4 animate-pulse">
-                  <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-md w-1/4" />
-                  <div className="h-7 bg-slate-200 dark:bg-slate-800 rounded-md w-3/4" />
-                  <div className="h-20 bg-slate-200 dark:bg-slate-800 rounded-md w-full" />
+        {/* DYNAMIC SEARCH RESULT CARD */}
+        {(isLoading || resolving || resolvedLinks || (searchQuery.trim() && isSearchQueryUrl)) && (
+          <section className="max-w-2xl mx-auto w-full mb-12">
+            {resolving ? (
+              <div className="glass-panel border border-indigo-500/30 rounded-2xl p-10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl shadow-indigo-500/5">
+                <RefreshCw className="animate-spin text-indigo-500" size={36} />
+                <h4 className="text-xl font-bold text-indigo-600 dark:text-indigo-400">Resolving Problem Details</h4>
+                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+                  Contacting platform API endpoints, matching equivalent problem URLs, and saving to your database. This may take a few seconds...
+                </p>
+              </div>
+            ) : isLoading ? (
+              <div className="glass-panel border border-slate-200/50 dark:border-slate-900 rounded-2xl p-6 space-y-4 animate-pulse">
+                <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-md w-1/4" />
+                <div className="h-7 bg-slate-200 dark:bg-slate-800 rounded-md w-3/4" />
+                <div className="h-20 bg-slate-200 dark:bg-slate-800 rounded-md w-full" />
+              </div>
+            ) : resolvedLinks ? (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-indigo-500" />
+                  <span>Resolved Result</span>
+                </h3>
+                <ResultsCard problem={resolvedLinks} />
+              </div>
+            ) : searchQuery.trim() && isSearchQueryUrl ? (
+              <div className="text-center py-10 px-6 glass-panel rounded-3xl max-w-xl mx-auto border border-indigo-500/20 shadow-xl shadow-indigo-500/5">
+                <div className="h-14 w-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 text-indigo-500">
+                  <Sparkles size={26} className="animate-float" />
                 </div>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pasted Link is not in Database</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
+                  This appears to be a valid URL from <strong>{matchedUrlPlatform?.toUpperCase()}</strong>, but it hasn&apos;t been mapped in our database yet. Would you like to resolve it automatically?
+                </p>
+                <div className="mt-6 flex justify-center gap-3">
+                  <button
+                    id="resolve-pasted-url-btn"
+                    onClick={handleResolveProblem}
+                    disabled={resolving}
+                    className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-500/10 flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={resolving ? 'animate-spin' : ''} />
+                    <span>{resolving ? 'Resolving...' : 'Resolve & Add Problem'}</span>
+                  </button>
+                  <button
+                    onClick={handleClearSearch}
+                    className="px-5 py-3 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold rounded-xl transition-all text-sm cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        )}
+
+        {/* BOOKMARKED PROBLEMS SECTION */}
+        <section className="flex-1">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/50 dark:border-slate-800/40 pb-5 mb-8">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <Bookmark className="fill-indigo-500 text-indigo-500" size={20} />
+              <span>Bookmarked Problems ({filteredProblems.length})</span>
+            </h2>
+            
+            {/* Difficulty Filter */}
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1 text-slate-400 mr-1.5">
+                <SlidersHorizontal size={14} />
+                <span className="text-xs font-semibold uppercase tracking-wider">Difficulty</span>
+              </div>
+              
+              {(['All', 'Easy', 'Medium', 'Hard'] as const).map((diff) => (
+                <button
+                  key={diff}
+                  onClick={() => setSelectedDifficulty(diff)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    selectedDifficulty === diff
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/10'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  {diff}
+                </button>
               ))}
             </div>
-          ) : filteredProblems.length > 0 ? (
-            // Results list
+          </div>
+
+          {filteredProblems.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProblems.map((problem) => (
                 <ResultsCard key={problem.id} problem={problem} />
               ))}
             </div>
-          ) : isSearchQueryUrl ? (
-            // Unresolved URL resolver card
-            <div className="text-center py-16 px-6 glass-panel rounded-3xl max-w-xl mx-auto border border-indigo-500/20 shadow-xl shadow-indigo-500/5">
-              <div className="h-14 w-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 text-indigo-500">
-                <Sparkles size={26} className="animate-float" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pasted Link is not in Database</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
-                This appears to be a valid URL from <strong>{matchedUrlPlatform?.toUpperCase()}</strong>, but it hasn't been mapped in our database yet. Would you like to resolve it automatically?
-              </p>
-              <div className="mt-6 flex justify-center gap-3">
-                <button
-                  id="resolve-pasted-url-btn"
-                  onClick={handleResolveProblem}
-                  disabled={resolving}
-                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-500/10 flex items-center gap-2 text-sm cursor-pointer"
-                >
-                  <RefreshCw size={14} className={resolving ? 'animate-spin' : ''} />
-                  <span>{resolving ? 'Resolving...' : 'Resolve & Add Problem'}</span>
-                </button>
-                <button
-                  onClick={handleClearSearch}
-                  className="px-5 py-3 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold rounded-xl transition-all text-sm cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
           ) : (
-            // Generic Empty Search State
             <div className="text-center py-16 px-4 glass-panel rounded-3xl max-w-xl mx-auto border border-dashed border-slate-200 dark:border-slate-800">
               <div className="h-12 w-12 rounded-2xl bg-slate-100 dark:bg-slate-950 flex items-center justify-center mx-auto mb-4 text-slate-400">
-                <Search size={22} />
+                <Bookmark size={22} />
               </div>
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">No coding problems found</h3>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">No bookmarked problems</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-                {showBookmarksOnly 
-                  ? "You haven't bookmarked any problems matching this query yet." 
-                  : "We couldn't match this query to any sample problems. Try searching 'Two Sum' or paste a URL."}
+                Any problems you bookmark will appear here for quick access.
               </p>
-              
-              {!showBookmarksOnly && (
-                <div className="mt-5 flex justify-center">
-                  <button
-                    onClick={() => setSearchQuery('Two Sum')}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
-                  >
-                    <span>Try "Two Sum" query</span>
-                    <ArrowRight size={12} />
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </section>
