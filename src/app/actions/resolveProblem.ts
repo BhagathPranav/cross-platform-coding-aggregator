@@ -3,6 +3,7 @@
 import PocketBase from 'pocketbase';
 import { CodingProblem } from '@/lib/db';
 import { parseProblemUrl } from '@/lib/parser';
+import { getCrossPlatformLinks } from '@/lib/aiRouter';
 
 // Admin details for database caching (read on server only)
 const pbUrl = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
@@ -13,13 +14,6 @@ interface ResolveResponse {
   success: boolean;
   problem?: CodingProblem;
   message?: string;
-}
-
-/**
- * Standardizes a title string for fuzzy comparison by removing spaces and punctuation.
- */
-function getCleanCompare(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -78,10 +72,10 @@ function areTitlesEquivalent(title1: string, title2: string): boolean {
 }
 
 
-
 /**
  * Server Action that parses a pasted URL, extracts its problem details from platform APIs/scraping,
- * matches equivalent titles, and caches it in the PocketBase collection.
+ * uses the AI Router to find cross-platform URLs via real web search,
+ * and caches it in the PocketBase collection.
  */
 export async function resolveProblemAction(url: string): Promise<ResolveResponse> {
   try {
@@ -99,21 +93,20 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
     const { platform, slug } = urlMatch;
     let title = '';
     let difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium';
-    let leetcodeUrl = '';
-    let codeforcesUrl = '';
-    let hackerrankUrl = '';
-    let codechefUrl = '';
-    let geeksforgeeksUrl = '';
+
+    // Store the pasted URL for the source platform
+    let pastedPlatformUrls: Record<string, string> = {};
+    const targetUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+    pastedPlatformUrls[platform] = targetUrl;
 
     console.log(`Resolving URL for platform: ${platform}, slug: ${slug}`);
 
-    // 2. Fetch platform data
+    // 2. Fetch title and difficulty from the source platform
     if (platform === 'leetcode') {
-      leetcodeUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
       try {
         const response = await fetch('https://leetcode.com/api/problems/all/', {
           headers: { 'User-Agent': 'Mozilla/5.0' },
-          next: { revalidate: 3600 } // cache for an hour
+          next: { revalidate: 3600 }
         });
         if (response.ok) {
           const data = await response.json();
@@ -122,7 +115,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           );
           if (found) {
             title = found.stat.question__title;
-            const diffLevel = found.difficulty.level; // 1 = Easy, 2 = Medium, 3 = Hard
+            const diffLevel = found.difficulty.level;
             difficulty = diffLevel === 1 ? 'Easy' : diffLevel === 3 ? 'Hard' : 'Medium';
           }
         }
@@ -131,9 +124,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       }
     } 
     else if (platform === 'codeforces') {
-      codeforcesUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
       try {
-        // Codeforces slug is contestId + index (e.g. 123A)
         const match = slug.match(/^(\d+)([a-zA-Z\d]+)$/);
         if (match) {
           const contestId = parseInt(match[1]);
@@ -162,12 +153,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       }
     } 
     else {
-      // Fallback for HTML Scraping (HackerRank, CodeChef, GeeksforGeeks)
-      const targetUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
-      if (platform === 'hackerrank') hackerrankUrl = targetUrl;
-      else if (platform === 'codechef') codechefUrl = targetUrl;
-      else if (platform === 'geeksforgeeks') geeksforgeeksUrl = targetUrl;
-
+      // HTML Scraping fallback for HackerRank, CodeChef, GeeksforGeeks
       try {
         const response = await fetch(targetUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
@@ -177,7 +163,6 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
           if (titleMatch && titleMatch[1]) {
             let extractedTitle = titleMatch[1].trim();
-            // Clean site suffixes
             extractedTitle = extractedTitle
               .replace(/\s*-\s*GeeksforGeeks.*/i, '')
               .replace(/\s*\|\s*HackerRank.*/i, '')
@@ -209,29 +194,39 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
 
     console.log(`Resolved problem info: "${title}" (${difficulty})`);
 
-    // 3. Connect to database to check for existing equivalents and merge URLs
+    // 3. Use AI Router to find cross-platform URLs via real web search
+    console.log(`[resolveProblemAction] Searching for cross-platform links for: "${title}"`);
+    const aiLinks = await getCrossPlatformLinks(title);
+
+    // Merge: prefer the pasted URL for its platform, use AI-discovered URLs for the rest
+    const leetcodeUrl = platform === 'leetcode' ? targetUrl : (aiLinks?.leetcode || '');
+    const codeforcesUrl = platform === 'codeforces' ? targetUrl : (aiLinks?.codeforces || '');
+    const hackerrankUrl = platform === 'hackerrank' ? targetUrl : (aiLinks?.hackerrank || '');
+    const codechefUrl = platform === 'codechef' ? targetUrl : (aiLinks?.codechef || '');
+    const geeksforgeeksUrl = platform === 'geeksforgeeks' ? targetUrl : (aiLinks?.geeksforgeeks || '');
+
+    console.log(`[resolveProblemAction] Final URLs:`, {
+      leetcode: leetcodeUrl || null,
+      codeforces: codeforcesUrl || null,
+      hackerrank: hackerrankUrl || null,
+      codechef: codechefUrl || null,
+      geeksforgeeks: geeksforgeeksUrl || null,
+    });
+
+    // 4. Connect to database to check for existing equivalents and merge URLs
     const pbAdmin = new PocketBase(pbUrl);
     let resolvedProblem: CodingProblem | null = null;
     let existingRecordId: string | null = null;
 
     try {
-      // Authenticate as Admin
       await pbAdmin.collection('_superusers').authWithPassword(adminEmail, adminPassword);
 
-      // Get all problems from DB to check for equivalents
       const allProblems = await pbAdmin.collection('problems').getFullList();
       const existingMatch = allProblems.find(p => areTitlesEquivalent(p.title, title));
 
       if (existingMatch) {
         existingRecordId = existingMatch.id;
-        // Merge URLs: prefer new resolved URL if populated, otherwise use existing
-        leetcodeUrl = leetcodeUrl || existingMatch.leetcode_url || '';
-        codeforcesUrl = codeforcesUrl || existingMatch.codeforces_url || '';
-        hackerrankUrl = hackerrankUrl || existingMatch.hackerrank_url || '';
-        codechefUrl = codechefUrl || existingMatch.codechef_url || '';
-        geeksforgeeksUrl = geeksforgeeksUrl || existingMatch.geeksforgeeks_url || '';
-        
-        // Use the existing problem title and difficulty to keep it consistent
+        // Use existing title and difficulty for consistency
         title = existingMatch.title;
         difficulty = existingMatch.difficulty as any;
         console.log(`Found equivalent problem in DB: "${title}" (ID: ${existingRecordId}). Merging URLs.`);
@@ -240,19 +235,18 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
       console.warn('PocketBase admin connection failed during initial lookup, using local representation:', pbErr);
     }
 
-
     // 5. Save/Update record in database
+    const dbPayload = {
+      leetcode_url: leetcodeUrl || null,
+      codeforces_url: codeforcesUrl || null,
+      hackerrank_url: hackerrankUrl || null,
+      codechef_url: codechefUrl || null,
+      geeksforgeeks_url: geeksforgeeksUrl || null
+    };
+
     try {
       if (existingRecordId) {
-        // Update existing record
-        const r = await pbAdmin.collection('problems').update(existingRecordId, {
-          leetcode_url: leetcodeUrl || null,
-          codeforces_url: codeforcesUrl || null,
-          hackerrank_url: hackerrankUrl || null,
-          codechef_url: codechefUrl || null,
-          geeksforgeeks_url: geeksforgeeksUrl || null
-        });
-
+        const r = await pbAdmin.collection('problems').update(existingRecordId, dbPayload);
         resolvedProblem = {
           id: r.id,
           title: r.title,
@@ -263,19 +257,13 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           codechef_url: r.codechef_url || null,
           gfg_url: r.geeksforgeeks_url || null,
         };
-        console.log(`Updated problem "${title}" in DB with merged/resolved URLs.`);
+        console.log(`Updated problem "${title}" in DB with AI-discovered URLs.`);
       } else {
-        // Create new record
         const r = await pbAdmin.collection('problems').create({
           title,
           difficulty,
-          leetcode_url: leetcodeUrl || null,
-          codeforces_url: codeforcesUrl || null,
-          hackerrank_url: hackerrankUrl || null,
-          codechef_url: codechefUrl || null,
-          geeksforgeeks_url: geeksforgeeksUrl || null
+          ...dbPayload,
         });
-
         resolvedProblem = {
           id: r.id,
           title: r.title,
@@ -286,7 +274,7 @@ export async function resolveProblemAction(url: string): Promise<ResolveResponse
           codechef_url: r.codechef_url || null,
           gfg_url: r.geeksforgeeks_url || null,
         };
-        console.log(`Cached new problem "${title}" in PocketBase successfully.`);
+        console.log(`Cached new problem "${title}" in PocketBase with AI-discovered URLs.`);
       }
     } catch (pbErr) {
       console.warn('PocketBase save/update failed, returning in-memory representation:', pbErr);
