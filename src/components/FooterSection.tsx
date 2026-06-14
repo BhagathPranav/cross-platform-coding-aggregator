@@ -112,8 +112,8 @@ export function FooterSection() {
               delay: 0.3 + i * 0.06,
               duration: 0.5,
               ease: 'backOut',
-              y: { repeat: Infinity, duration: 4 + (i % 3), ease: 'easeInOut', delay: i * 0.3 },
-              x: { repeat: Infinity, duration: 5 + (i % 4), ease: 'easeInOut', delay: i * 0.2 },
+              y: { repeat: Infinity, duration: (4 + (i % 3)) * 2, ease: 'easeInOut', delay: i * 0.3 },
+              x: { repeat: Infinity, duration: (5 + (i % 4)) * 2, ease: 'easeInOut', delay: i * 0.2 },
             }}
             style={{
               top: `${b.y}%`,
