@@ -209,99 +209,84 @@ class DatabaseService {
    */
   async getBookmarks(userId?: string): Promise<string[]> {
     const isOnline = await this.checkConnection();
+    
+    // Guest / Offline / Unauthenticated Session
     if (!isOnline || !userId || userId === 'guest') {
       if (typeof window !== 'undefined') {
         const key = `bookmarks_${userId || 'guest'}`;
-        const seedKey = `seeded_${userId || 'guest'}`;
-        
         const stored = localStorage.getItem(key);
-        const isSeeded = localStorage.getItem(seedKey);
         
-        if (isSeeded && stored) {
+        if (stored) {
           const parsed = JSON.parse(stored) as string[];
-          const hasMockIds = parsed.some(id => id.startsWith('prob-'));
-          // Re-seed if we are online but have mock IDs, or if we are offline but have dynamic IDs
-          const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds && parsed.length > 0);
-          if (!needsReSeed) {
-            return parsed;
+          if (parsed.length > 0) {
+            const hasMockIds = parsed.some(id => id.startsWith('prob-'));
+            const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds);
+            if (!needsReSeed) {
+              return parsed;
+            }
           }
         }
         
         const initial = await this.getDefaultProblemIds(isOnline);
         localStorage.setItem(key, JSON.stringify(initial));
-        localStorage.setItem(seedKey, 'true');
         return initial;
       }
       return !isOnline ? ['prob-1', 'prob-2', 'prob-3'] : await this.getDefaultProblemIds(true);
     }
 
+    // Authenticated Online Session
     try {
       const records = await pb.collection('bookmarks').getFullList({
         filter: `user = "${userId}"`,
         requestKey: null,
       });
-      const problemIds = records.map(r => r.problem);
 
-      if (typeof window !== 'undefined') {
-        const seedKey = `seeded_${userId}`;
-        const isSeeded = localStorage.getItem(seedKey);
-
-        if (!isSeeded) {
-          if (records.length === 0) {
-            // Seed the 3 default problems from PocketBase
+      if (records.length === 0) {
+        // Seed default 3 problems in PocketBase
+        try {
+          const defaultIds = await this.getDefaultProblemIds(true);
+          const seededIds: string[] = [];
+          
+          for (const id of defaultIds) {
+            if (id.startsWith('prob-')) continue;
             try {
-              const defaultIds = await this.getDefaultProblemIds(true);
-
-              const seededIds: string[] = [];
-              for (const id of defaultIds) {
-                if (id.startsWith('prob-')) continue;
-                try {
-                  const created = await pb.collection('bookmarks').create({
-                    user: userId,
-                    problem: id,
-                  });
-                  seededIds.push(created.problem);
-                } catch (err) {
-                  console.error(`Failed to create default bookmark for problem ${id}:`, err);
-                }
-              }
-
-              localStorage.setItem(seedKey, 'true');
-              if (seededIds.length > 0) {
-                return seededIds;
-              }
+              const created = await pb.collection('bookmarks').create({
+                user: userId,
+                problem: id,
+              });
+              seededIds.push(created.problem);
             } catch (err) {
-              console.error('Failed to seed default online bookmarks:', err);
+              console.error(`Failed to create default bookmark for problem ${id}:`, err);
             }
-          } else {
-            // Mark as seeded since they already have bookmarks
-            localStorage.setItem(seedKey, 'true');
           }
+          if (seededIds.length > 0) {
+            return seededIds;
+          }
+        } catch (err) {
+          console.error('Failed to seed default online bookmarks:', err);
         }
       }
 
-      return problemIds;
+      return records.map(r => r.problem);
     } catch (e) {
       console.error('PocketBase fetch bookmarks failed, falling back to localStorage:', e);
       if (typeof window !== 'undefined') {
         const key = `bookmarks_${userId}`;
-        const seedKey = `seeded_${userId}`;
-        
         const stored = localStorage.getItem(key);
-        const isSeeded = localStorage.getItem(seedKey);
         
-        if (isSeeded && stored) {
+        if (stored) {
           const parsed = JSON.parse(stored) as string[];
-          const hasMockIds = parsed.some(id => id.startsWith('prob-'));
-          const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds && parsed.length > 0);
-          if (!needsReSeed) {
-            return parsed;
+          if (parsed.length > 0) {
+            const hasMockIds = parsed.some(id => id.startsWith('prob-'));
+            const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds);
+            if (!needsReSeed) {
+              return parsed;
+            }
           }
         }
         
         const initial = await this.getDefaultProblemIds(isOnline);
         localStorage.setItem(key, JSON.stringify(initial));
-        localStorage.setItem(seedKey, 'true');
         return initial;
       }
       return !isOnline ? ['prob-1', 'prob-2', 'prob-3'] : await this.getDefaultProblemIds(true);
