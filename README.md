@@ -88,3 +88,46 @@ The application features a heavy, infinite concentric 3D wireframe tunnel animat
 │   │   └── pocketbase.ts   # PocketBase singleton client & generic types
 │   └── scripts/            # Database CI/CD Utilities
 │       └── seed.js         # Schema compiler and initial records seeder
+🚀 Local Development Setup
+Prerequisites
+Node.js (v18 or higher)
+
+Git
+
+1. Frontend Setup
+Clone the repository and install dependencies:
+
+Bash
+git clone [https://github.com/BhagathPranav/cross-platform-coding-aggregator.git](https://github.com/BhagathPranav/cross-platform-coding-aggregator.git)
+cd cross-platform-coding-aggregator
+npm install
+Start the Next.js development server:
+
+Bash
+npm run dev
+Note: The application will automatically initialize in Mock Mode, allowing you to test UI, search, and local bookmarks immediately at http://localhost:3000 without a backend.
+
+🗄️ Backend Setup (PocketBase)
+To experience the full distributed system, authentication, and live data persistence, run the local PocketBase server.
+
+1. Initialize the Database
+Download the executable for your OS from pocketbase.io.
+
+Place the executable outside your src folder and start the server:
+
+Bash
+./pocketbase serve
+(The server runs locally on port 8090 by default).
+
+2. Environment Configuration
+Create a .env.local file in the root of the Next.js project to point the frontend to your local database instance:
+
+Code snippet
+NEXT_PUBLIC_POCKETBASE_URL=[http://127.0.0.1:8090](http://127.0.0.1:8090)
+POCKETBASE_ADMIN_EMAIL=admin@aggregator.local
+POCKETBASE_ADMIN_PASSWORD=admin123456789
+3. Database Seeding
+Instead of manually configuring collections in the PocketBase Admin UI, run the automated seeder script. This script connects to the backend, defines the schema constraints for problems and bookmarks, registers the admin superuser, and seeds a robust set of interconnected coding challenges.
+
+Bash
+npm run seed
