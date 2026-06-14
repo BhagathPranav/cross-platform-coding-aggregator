@@ -184,6 +184,24 @@ class DatabaseService {
     }
   }
 
+  private async getDefaultProblemIds(isOnline: boolean): Promise<string[]> {
+    if (!isOnline) {
+      return ['prob-1', 'prob-2', 'prob-3'];
+    }
+    try {
+      const targetTitles = ['Two Sum', 'LRU Cache', 'Merge Sort'];
+      const problems = await pb.collection('problems').getFullList({
+        filter: targetTitles.map(t => `title = "${t}"`).join(' || ')
+      });
+      if (problems.length > 0) {
+        return problems.map(p => p.id);
+      }
+    } catch (err) {
+      console.error('Failed to get default problem IDs from online database:', err);
+    }
+    return ['prob-1', 'prob-2', 'prob-3'];
+  }
+
   /**
    * Returns IDs of all bookmarked problems.
    */
@@ -198,16 +216,21 @@ class DatabaseService {
         const isSeeded = localStorage.getItem(seedKey);
         
         if (isSeeded && stored) {
-          return JSON.parse(stored);
+          const parsed = JSON.parse(stored) as string[];
+          const hasMockIds = parsed.some(id => id.startsWith('prob-'));
+          // Re-seed if we are online but have mock IDs, or if we are offline but have dynamic IDs
+          const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds && parsed.length > 0);
+          if (!needsReSeed) {
+            return parsed;
+          }
         }
         
-        // Seed default 3 bookmarks on first load
-        const initial = ['prob-1', 'prob-2', 'prob-3'];
+        const initial = await this.getDefaultProblemIds(isOnline);
         localStorage.setItem(key, JSON.stringify(initial));
         localStorage.setItem(seedKey, 'true');
         return initial;
       }
-      return ['prob-1', 'prob-2', 'prob-3'];
+      return !isOnline ? ['prob-1', 'prob-2', 'prob-3'] : await this.getDefaultProblemIds(true);
     }
 
     try {
@@ -224,21 +247,19 @@ class DatabaseService {
           if (records.length === 0) {
             // Seed the 3 default problems from PocketBase
             try {
-              const targetTitles = ['Two Sum', 'LRU Cache', 'Merge Sort'];
-              const problems = await pb.collection('problems').getFullList({
-                filter: targetTitles.map(t => `title = "${t}"`).join(' || ')
-              });
+              const defaultIds = await this.getDefaultProblemIds(true);
 
               const seededIds: string[] = [];
-              for (const p of problems) {
+              for (const id of defaultIds) {
+                if (id.startsWith('prob-')) continue;
                 try {
                   const created = await pb.collection('bookmarks').create({
                     user: userId,
-                    problem: p.id,
+                    problem: id,
                   });
                   seededIds.push(created.problem);
                 } catch (err) {
-                  console.error(`Failed to create default bookmark for problem ${p.title}:`, err);
+                  console.error(`Failed to create default bookmark for problem ${id}:`, err);
                 }
               }
 
@@ -267,15 +288,20 @@ class DatabaseService {
         const isSeeded = localStorage.getItem(seedKey);
         
         if (isSeeded && stored) {
-          return JSON.parse(stored);
+          const parsed = JSON.parse(stored) as string[];
+          const hasMockIds = parsed.some(id => id.startsWith('prob-'));
+          const needsReSeed = (isOnline && hasMockIds) || (!isOnline && !hasMockIds && parsed.length > 0);
+          if (!needsReSeed) {
+            return parsed;
+          }
         }
         
-        const initial = ['prob-1', 'prob-2', 'prob-3'];
+        const initial = await this.getDefaultProblemIds(isOnline);
         localStorage.setItem(key, JSON.stringify(initial));
         localStorage.setItem(seedKey, 'true');
         return initial;
       }
-      return ['prob-1', 'prob-2', 'prob-3'];
+      return !isOnline ? ['prob-1', 'prob-2', 'prob-3'] : await this.getDefaultProblemIds(true);
     }
   }
 
