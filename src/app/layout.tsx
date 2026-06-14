@@ -1,17 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider, AuthProvider } from "./providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { Preloader } from "@/components/Preloader";
 
 export const metadata: Metadata = {
   title: "Codemash | Unified Cross-Platform Coding Aggregator",
@@ -26,11 +16,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className="h-full antialiased"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 transition-colors duration-300">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <body className="min-h-full flex flex-col bg-[#F8E9E2] text-[#111111] transition-colors duration-300">
+        <Preloader />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <AuthProvider>
             {children}
           </AuthProvider>

@@ -189,12 +189,25 @@ class DatabaseService {
    */
   async getBookmarks(userId?: string): Promise<string[]> {
     const isOnline = await this.checkConnection();
-    if (!isOnline || !userId) {
+    if (!isOnline || !userId || userId === 'guest') {
       if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(`bookmarks_${userId || 'guest'}`);
-        return stored ? JSON.parse(stored) : [];
+        const key = `bookmarks_${userId || 'guest'}`;
+        const seedKey = `seeded_${userId || 'guest'}`;
+        
+        const stored = localStorage.getItem(key);
+        const isSeeded = localStorage.getItem(seedKey);
+        
+        if (isSeeded && stored) {
+          return JSON.parse(stored);
+        }
+        
+        // Seed default 3 bookmarks on first load
+        const initial = ['prob-1', 'prob-2', 'prob-3'];
+        localStorage.setItem(key, JSON.stringify(initial));
+        localStorage.setItem(seedKey, 'true');
+        return initial;
       }
-      return [];
+      return ['prob-1', 'prob-2', 'prob-3'];
     }
 
     try {
@@ -205,10 +218,22 @@ class DatabaseService {
     } catch (e) {
       console.error('PocketBase fetch bookmarks failed, falling back to localStorage:', e);
       if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(`bookmarks_${userId}`);
-        return stored ? JSON.parse(stored) : [];
+        const key = `bookmarks_${userId}`;
+        const seedKey = `seeded_${userId}`;
+        
+        const stored = localStorage.getItem(key);
+        const isSeeded = localStorage.getItem(seedKey);
+        
+        if (isSeeded && stored) {
+          return JSON.parse(stored);
+        }
+        
+        const initial = ['prob-1', 'prob-2', 'prob-3'];
+        localStorage.setItem(key, JSON.stringify(initial));
+        localStorage.setItem(seedKey, 'true');
+        return initial;
       }
-      return [];
+      return ['prob-1', 'prob-2', 'prob-3'];
     }
   }
 
@@ -217,7 +242,7 @@ class DatabaseService {
    */
   async toggleBookmark(userId: string, problemId: string): Promise<boolean> {
     const isOnline = await this.checkConnection();
-    if (!isOnline) {
+    if (!isOnline || userId === 'guest') {
       if (typeof window !== 'undefined') {
         const key = `bookmarks_${userId}`;
         const stored = localStorage.getItem(key);
