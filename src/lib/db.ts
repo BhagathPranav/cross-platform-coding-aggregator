@@ -214,7 +214,49 @@ class DatabaseService {
       const records = await pb.collection('bookmarks').getFullList({
         filter: `user = "${userId}"`,
       });
-      return records.map(r => r.problem);
+      const problemIds = records.map(r => r.problem);
+
+      if (typeof window !== 'undefined') {
+        const seedKey = `seeded_${userId}`;
+        const isSeeded = localStorage.getItem(seedKey);
+
+        if (!isSeeded) {
+          if (records.length === 0) {
+            // Seed the 3 default problems from PocketBase
+            try {
+              const targetTitles = ['Two Sum', 'LRU Cache', 'Merge Sort'];
+              const problems = await pb.collection('problems').getFullList({
+                filter: targetTitles.map(t => `title = "${t}"`).join(' || ')
+              });
+
+              const seededIds: string[] = [];
+              for (const p of problems) {
+                try {
+                  const created = await pb.collection('bookmarks').create({
+                    user: userId,
+                    problem: p.id,
+                  });
+                  seededIds.push(created.problem);
+                } catch (err) {
+                  console.error(`Failed to create default bookmark for problem ${p.title}:`, err);
+                }
+              }
+
+              localStorage.setItem(seedKey, 'true');
+              if (seededIds.length > 0) {
+                return seededIds;
+              }
+            } catch (err) {
+              console.error('Failed to seed default online bookmarks:', err);
+            }
+          } else {
+            // Mark as seeded since they already have bookmarks
+            localStorage.setItem(seedKey, 'true');
+          }
+        }
+      }
+
+      return problemIds;
     } catch (e) {
       console.error('PocketBase fetch bookmarks failed, falling back to localStorage:', e);
       if (typeof window !== 'undefined') {
