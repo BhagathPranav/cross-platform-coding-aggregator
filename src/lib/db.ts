@@ -167,6 +167,7 @@ class DatabaseService {
     try {
       const records = await pb.collection('problems').getFullList({
         sort: 'title',
+        requestKey: null,
       });
       return records.map(r => ({
         id: r.id,
@@ -191,7 +192,8 @@ class DatabaseService {
     try {
       const targetTitles = ['Two Sum', 'LRU Cache', 'Merge Sort'];
       const problems = await pb.collection('problems').getFullList({
-        filter: targetTitles.map(t => `title = "${t}"`).join(' || ')
+        filter: targetTitles.map(t => `title = "${t}"`).join(' || '),
+        requestKey: null,
       });
       if (problems.length > 0) {
         return problems.map(p => p.id);
@@ -236,6 +238,7 @@ class DatabaseService {
     try {
       const records = await pb.collection('bookmarks').getFullList({
         filter: `user = "${userId}"`,
+        requestKey: null,
       });
       const problemIds = records.map(r => r.problem);
 
@@ -333,7 +336,8 @@ class DatabaseService {
       // Check if bookmark exists
       try {
         const existing = await pb.collection('bookmarks').getFirstListItem(
-          `user = "${userId}" && problem = "${problemId}"`
+          `user = "${userId}" && problem = "${problemId}"`,
+          { requestKey: null }
         );
         await pb.collection('bookmarks').delete(existing.id);
         return false; // un-bookmarked
@@ -382,6 +386,7 @@ class DatabaseService {
     try {
       const records = await pb.collection('problems').getFullList({
         filter: `leetcode_url ~ "/problems/${slug}"`,
+        requestKey: null,
       });
       if (records.length > 0) {
         const r = records[0];
