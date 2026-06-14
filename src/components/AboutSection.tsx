@@ -4,111 +4,9 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Database, Link2, Sun, Info } from 'lucide-react';
 
-/*
- * Each tunnel "ring" carries multiple thin wall-panel strips.
- * Panels sit flush against the edges of the scaling square,
- * creating the illusion of colored tiles on corridor walls.
- *
- * position  → which wall: top / right / bottom / left
- * offset    → % distance along that wall edge (from the start corner)
- * span      → % length of the tile along that wall
- * thickness → % depth of the tile perpendicular to the wall
- * color     → hex fill
- */
-type TileConfig = {
-  position: 'top' | 'right' | 'bottom' | 'left';
-  offset: number;
-  span: number;
-  thickness: number;
-  color: string;
-};
 
-const RING_TILES: TileConfig[][] = [
-  // Ring 0
-  [
-    { position: 'top',    offset: 5,  span: 55, thickness: 12, color: '#FF6442' },
-    { position: 'right',  offset: 60, span: 35, thickness: 10, color: '#0066FF' },
-  ],
-  // Ring 1
-  [
-    { position: 'bottom', offset: 10, span: 45, thickness: 12, color: '#FFB800' },
-    { position: 'left',   offset: 15, span: 40, thickness: 10, color: '#00B050' },
-    { position: 'top',    offset: 60, span: 30, thickness: 8,  color: '#D1B3FF' },
-  ],
-  // Ring 2
-  [
-    { position: 'top',    offset: 0,  span: 40, thickness: 14, color: '#9B5DE5' },
-    { position: 'right',  offset: 10, span: 50, thickness: 12, color: '#FF6442' },
-    { position: 'bottom', offset: 55, span: 40, thickness: 10, color: '#00B050' },
-  ],
-  // Ring 3
-  [
-    { position: 'left',   offset: 5,  span: 30, thickness: 10, color: '#0066FF' },
-    { position: 'bottom', offset: 5,  span: 50, thickness: 12, color: '#FFB800' },
-    { position: 'right',  offset: 55, span: 40, thickness: 10, color: '#9B5DE5' },
-  ],
-  // Ring 4
-  [
-    { position: 'top',    offset: 10, span: 35, thickness: 10, color: '#FFB800' },
-    { position: 'top',    offset: 55, span: 35, thickness: 12, color: '#FF6442' },
-    { position: 'left',   offset: 20, span: 45, thickness: 12, color: '#D1B3FF' },
-  ],
-  // Ring 5
-  [
-    { position: 'right',  offset: 5,  span: 60, thickness: 14, color: '#FF6442' },
-    { position: 'bottom', offset: 20, span: 35, thickness: 10, color: '#0066FF' },
-  ],
-  // Ring 6
-  [
-    { position: 'bottom', offset: 0,  span: 30, thickness: 10, color: '#00B050' },
-    { position: 'bottom', offset: 40, span: 35, thickness: 12, color: '#FF6442' },
-    { position: 'left',   offset: 50, span: 35, thickness: 10, color: '#FFB800' },
-    { position: 'top',    offset: 30, span: 25, thickness: 8,  color: '#9B5DE5' },
-  ],
-  // Ring 7
-  [
-    { position: 'top',    offset: 5,  span: 60, thickness: 14, color: '#00B050' },
-    { position: 'right',  offset: 25, span: 30, thickness: 10, color: '#0066FF' },
-    { position: 'left',   offset: 60, span: 30, thickness: 10, color: '#FF6442' },
-  ],
-  // Ring 8
-  [
-    { position: 'left',   offset: 10, span: 50, thickness: 12, color: '#9B5DE5' },
-    { position: 'right',  offset: 0,  span: 40, thickness: 12, color: '#FFB800' },
-    { position: 'bottom', offset: 30, span: 40, thickness: 10, color: '#D1B3FF' },
-  ],
-  // Ring 9
-  [
-    { position: 'top',    offset: 20, span: 30, thickness: 10, color: '#0066FF' },
-    { position: 'bottom', offset: 0,  span: 55, thickness: 12, color: '#00B050' },
-    { position: 'right',  offset: 40, span: 50, thickness: 14, color: '#FF6442' },
-  ],
-];
-
-function tileStyle(t: TileConfig): React.CSSProperties {
-  // Tiles are positioned as percentage-based strips on the edges of the frame square
-  switch (t.position) {
-    case 'top':
-      return { position: 'absolute', top: 0, left: `${t.offset}%`, width: `${t.span}%`, height: `${t.thickness}%`, backgroundColor: t.color };
-    case 'bottom':
-      return { position: 'absolute', bottom: 0, left: `${t.offset}%`, width: `${t.span}%`, height: `${t.thickness}%`, backgroundColor: t.color };
-    case 'left':
-      return { position: 'absolute', left: 0, top: `${t.offset}%`, height: `${t.span}%`, width: `${t.thickness}%`, backgroundColor: t.color };
-    case 'right':
-      return { position: 'absolute', right: 0, top: `${t.offset}%`, height: `${t.span}%`, width: `${t.thickness}%`, backgroundColor: t.color };
-  }
-}
-
-const NUM_RINGS = 10;
-const DURATION = 8;
-const STAGGER = DURATION / NUM_RINGS; // 0.8s per ring
 
 export function AboutSection() {
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const handleScrollToSearch = () => {
     const el = document.getElementById('search-section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -159,67 +57,46 @@ export function AboutSection() {
         </button>
       </div>
 
-      {/* RIGHT CARD: 3D Infinite Tunnel */}
-      <div className="lg:col-span-7 relative aspect-square w-full h-full min-h-[400px] bg-[#F8E9E2] rounded-[3rem] border border-[#111111] overflow-hidden flex items-center justify-center mx-auto">
+      {/* RIGHT CARD: 3D Infinite Tunnel (60% width on Desktop) */}
+      <div className="lg:col-span-7 relative w-full h-full min-h-[400px] bg-[#F4F3EF] rounded-[3rem] border border-black/10 overflow-hidden flex items-center justify-center">
         
-        {/* LAYER 1: Static Perspective Grid — all lines converge to center */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
-          {/* Corner diagonals */}
-          <line x1="0" y1="0" x2="100%" y2="100%" stroke="#111111" strokeWidth="1.5" opacity="0.7" />
-          <line x1="100%" y1="0" x2="0" y2="100%" stroke="#111111" strokeWidth="1.5" opacity="0.7" />
-          {/* Cross-hair midlines */}
-          <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#111111" strokeWidth="1.5" opacity="0.7" />
-          <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#111111" strokeWidth="1.5" opacity="0.7" />
-          {/* Secondary radials — top edge */}
-          <line x1="25%" y1="0" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          <line x1="75%" y1="0" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          {/* Secondary radials — bottom edge */}
-          <line x1="25%" y1="100%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          <line x1="75%" y1="100%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          {/* Secondary radials — left edge */}
-          <line x1="0" y1="25%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          <line x1="0" y1="75%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          {/* Secondary radials — right edge */}
-          <line x1="100%" y1="25%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-          <line x1="100%" y1="75%" x2="50%" y2="50%" stroke="#111111" strokeWidth="1" opacity="0.35" />
-        </svg>
-
-        {/* LAYER 2: Center vanishing-point box */}
-        <div className="absolute z-30 w-16 h-16 bg-[#FDF0EB] border-2 border-[#111111] flex items-center justify-center text-[#111111] font-mono font-bold text-lg shadow-lg select-none pointer-events-none">
+        {/* The center focal point */}
+        <div className="absolute z-10 w-16 h-16 bg-[#111111] rounded-2xl flex items-center justify-center text-white font-mono font-bold text-2xl shadow-2xl">
           {"{ }"}
         </div>
 
-        {/* LAYER 3: Scaling corridor rings with wall-panel tiles */}
-        {mounted && Array.from({ length: NUM_RINGS }, (_, i) => {
-          const tiles = RING_TILES[i % RING_TILES.length];
+        {/* The hypnotic scaling frames */}
+        {/* We use strict dimensions and absolute Flexbox centering so scale never conflicts. */}
+        {/* We iterate 10 times to form a deep, infinite staggered tunnel. */}
+        {[...Array(10)].map((_, i) => {
+          // Vibrant platform/brand colors to cycle through
+          const colors = [
+            'border-gray-300', 
+            'border-[#FFB800]', // Mustard
+            'border-[#FF6442]', // Coral
+            'border-[#D1B3FF]'  // Lavender
+          ];
+          const colorClass = colors[i % colors.length];
+
           return (
             <motion.div
               key={i}
-              className="absolute pointer-events-none"
-              style={{
-                width: 100,
-                height: 100,
-                // The visible corridor ring border
-                border: '1.5px solid #111111',
-                willChange: 'transform, opacity',
-              }}
-              initial={{ scale: 0.05, opacity: 0 }}
+              // bg-transparent and thick borders (3px) create the essential wireframe look.
+              className={`absolute border-[3px] bg-transparent ${colorClass}`}
+              // We explicitly set equal dimensions here to maintain the square geometry during scaling.
+              style={{ width: '200px', height: '200px', borderRadius: '2rem' }} 
+              initial={{ scale: 0.1, opacity: 0 }}
               animate={{
-                scale: [0.05, 8],
-                opacity: [0, 0.85, 1, 1, 0],
+                scale: [0.1, 4],         // Start tiny, scale up massively past the screen bounds
+                opacity: [0, 1, 1, 0]    // Fade in, stay visible, fade out right before edge
               }}
               transition={{
-                duration: DURATION,
-                repeat: Infinity,
-                ease: 'linear',
-                delay: i * STAGGER,
+                duration: 6,             // Total journey time for one frame
+                repeat: Infinity,        // Loop forever
+                ease: "linear",          // Constant speed is crucial for the tunnel illusion
+                delay: i * 0.6,          // Stagger frames perfectly to form the infinite corridor
               }}
-            >
-              {/* Thin colored wall-panel strips flush against the ring edges */}
-              {tiles.map((tile, j) => (
-                <div key={j} style={tileStyle(tile)} />
-              ))}
-            </motion.div>
+            />
           );
         })}
       </div>
