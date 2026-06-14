@@ -104,6 +104,11 @@ const DURATION = 8;
 const STAGGER = DURATION / NUM_RINGS; // 0.8s per ring
 
 export function AboutSection() {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handleScrollToSearch = () => {
     const el = document.getElementById('search-section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -185,7 +190,7 @@ export function AboutSection() {
         </div>
 
         {/* LAYER 3: Scaling corridor rings with wall-panel tiles */}
-        {Array.from({ length: NUM_RINGS }, (_, i) => {
+        {mounted && Array.from({ length: NUM_RINGS }, (_, i) => {
           const tiles = RING_TILES[i % RING_TILES.length];
           return (
             <motion.div
@@ -196,10 +201,11 @@ export function AboutSection() {
                 height: 100,
                 // The visible corridor ring border
                 border: '1.5px solid #111111',
+                willChange: 'transform, opacity',
               }}
               initial={{ scale: 0.05, opacity: 0 }}
               animate={{
-                scale: [0.05, 20],
+                scale: [0.05, 8],
                 opacity: [0, 0.85, 1, 1, 0],
               }}
               transition={{
